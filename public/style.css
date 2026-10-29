@@ -36,3 +36,39 @@
 .canvas-pill.right{font-size:10px}
 @media(max-width:1000px){.game-layout{grid-template-columns:minmax(0,1fr) 235px}}
 @media(max-width:760px){.game-layout{grid-template-columns:1fr}.side-column{display:flex;flex-direction:column}.build-panel{order:0}.chat-card{order:1}.side-column>.panel:not(.build-panel){margin:0}#worldCanvas{min-height:0}}
+
+
+/* 1.4 update: readable in-game clock and centered build-turn status. */
+.canvas-overlay { z-index: 3; align-items: flex-start; }
+.canvas-timer {
+  position:absolute; left:50%; top:0; transform:translateX(-50%);
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  min-width:112px; padding:7px 16px 8px; border-radius:13px;
+  background:linear-gradient(180deg,rgba(17,39,65,.96),rgba(9,24,43,.94));
+  border:2px solid #f6d36d; box-shadow:0 4px 14px #071a32a0, inset 0 1px 0 #ffffff24;
+  color:#fff; text-align:center; pointer-events:none;
+}
+.canvas-timer small { font:900 9px/1.2 Nunito,sans-serif; letter-spacing:1.2px; color:#c5ddf5; text-transform:uppercase; white-space:nowrap; }
+.canvas-timer strong { margin-top:2px; font:900 27px/.98 'Baloo 2',Nunito,sans-serif; color:#ffe078; letter-spacing:1px; font-variant-numeric:tabular-nums; text-shadow:0 2px 0 #0005; }
+.canvas-timer strong.urgent { color:#ff7584; animation:clockUrgent .55s ease-in-out infinite alternate; }
+.phase-center-notice {
+  position:absolute; z-index:5; left:50%; top:50%; transform:translate(-50%,-50%);
+  display:flex; align-items:center; gap:14px; width:min(84%,520px); padding:18px 22px;
+  border:2px solid #f3d16b; border-radius:18px;
+  background:linear-gradient(135deg,rgba(13,34,59,.96),rgba(36,51,75,.95));
+  box-shadow:0 18px 48px #0313269c, inset 0 1px 0 #ffffff20; color:#fff;
+  pointer-events:none; backdrop-filter:blur(5px);
+}
+.phase-center-notice.hidden { display:none; }
+.phase-center-icon { flex:0 0 55px; width:55px; height:55px; display:grid; place-items:center; border-radius:15px; background:#f5cc55; color:#18253b; font-size:30px; box-shadow:inset 0 -3px #a77a23; }
+.phase-center-notice strong { display:block; color:#ffe078; font:900 clamp(16px,2vw,23px)/1.15 'Baloo 2',Nunito,sans-serif; text-transform:uppercase; letter-spacing:.3px; }
+.phase-center-notice span:not(.phase-center-icon) { display:block; margin-top:5px; color:#d8e7f7; font:700 12px/1.5 Nunito,sans-serif; }
+@keyframes clockUrgent { from { transform:scale(1); } to { transform:scale(1.07); } }
+@media(max-width:760px) {
+  .canvas-timer { min-width:82px; padding:6px 9px; }
+  .canvas-timer small { font-size:7px; letter-spacing:.5px; }
+  .canvas-timer strong { font-size:21px; }
+  .phase-center-notice { width:min(90%,440px); padding:12px 14px; gap:10px; }
+  .phase-center-icon { flex-basis:42px; width:42px; height:42px; font-size:24px; }
+  .phase-center-notice span:not(.phase-center-icon) { font-size:10px; }
+}

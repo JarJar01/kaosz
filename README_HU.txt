@@ -1,7 +1,7 @@
 ALLATKAOSZ — ONLINE 2D ALLATOS AKADALYVERSENY
 ================================================
 
-JAVITASOK EBBEN A VALTOZATBAN (1.3)
+JAVITASOK EBBEN A VALTOZATBAN (1.4)
 ---------------------------
 - A helyi karakter mozgasa helyben szimulalt; a halozati poziciok nem irjak felul minden frame-ben. Az ugrashoz gombpuffer es peremsegitseg van, a palya/platform utkozesek toleransabbak
 - A fizika fix 120 Hz-es lepesekkel fut, az ugrashoz 180 ms-os gombpuffer es 140 ms-os peremsegitseg tartozik; a tavoli karakterek pozicioja simitva jelenik meg
@@ -17,16 +17,16 @@ A prototipus fo jellemzoi
 - Malac, kapibara, lo, pingvin es mosomedve karakterek
 - 2D oldalnezetes, kozos palya; mindenki egyszerre indul
 - Futas es ugras animacioval; forgó furesz es egyeb mozgó/rajzolt csapdak
-- A szobagazda allitja a kezdo aranyat, a koridot es a korok szamat; mindenki egy rovid, fix palyan jatszik
+- A szobagazda allitja a kezdo aranyat, a versenyidot, az epitkezesi idot es a korok szamat; mindenki egy rovid, fix palyan jatszik
 - A celba erkezesi sorrend pontokat er; aki az ido lejarataig nem er celba, nem kap helyezesi pontot arra a korre
 - A megtett ut kozben aranyat is ad
-- Minden kor utan a jatekosok egyenkent epitkeznek, a sorrend koronkent forog
+- Minden kor utan a jatekosok egyenkent epitkeznek, a sorrend koronkent forog; a sajat idon belul tobbszor is vasarolhatnak es epithetnek, amig van aranyuk
 - 5 epitmeny: csapdalada, forgo furesz, tuskek, rugos kilovo, gurulo hordo
 - Pajzs vasarolhato; egy halalos talalatotol megved, es visszalok
 - Egyetlen rovid, fix palya tobb platformmal; az alapcsapdak adottak, a jatekosok epitmenyei a tovabbi korokben is megmaradnak
 - Epitmeny platformra, levegobe vagy viz fole is helyezheto; az atatlatszo elo-nezet a lerakas helyen marad. A ladan stabilan meg lehet allni/ugrani, a furesz, tuske es hordo veszelyes
 - Chat es osszesitett ponttabla
-- A menu grafikaval, a karakterek es a palya pedig animalt, rajzolt megjelenessel keszulnek
+- A karakterek ot kulon vektoros SVG allatsprite-ot hasznalnak ket futolepes-pozicioval; a palya es a csapdak animalt, rajzolt megjelenesuek
 
 INDITAS WINDOWS ALATT
 ---------------------
@@ -62,8 +62,24 @@ A / Bal nyil: balra
 D / Jobb nyil: jobbra
 W: ugras (a Space nem ugrik)
 TAB: ponttabla es arany megjelenitese (nyomva tartva)
-Epitkezeskor: valassz egy epitmeny-ikont a jobb oldali panelen, mozgassd az egeret a kivant helyre, majd kattints. A palya barmely lathato pontjara epithetsz, platformra, levegobe es viz fole is. A kurzor mellett az atatlatszo epitmeny mutatja a lerakas helyet.
+Epitkezeskor: a sorodon belul valassz egy epitmeny-ikont a jobb oldali panelen, mozgassd az egeret a kivant helyre, majd kattints. Tobbszor is epithetsz, amig van aranyad es hatra van az idod; a „Kesz / Kihagyom” gombbal tovabbadhatod a kort. A palya barmely lathato pontjara epithetsz, platformra, levegobe es viz fole is. A kurzor mellett az atatlatszo epitmeny mutatja a lerakas helyet.
 
 MEGJEGYZES
 ----------
-Javitott 1.3 valtozat: rovid, fix palya; TAB-os ponttabla; W billentyus ugras gombpufferrel es peremsegitseggel; fixlepeses fizika; stabil leeses-visszaallas; valodi lada-platform/oldalutkozes; objektum-figura teglalap alapú csapdaerzekeles; szerver altal ellenorzott csapdaeredmeny; epitmeny-elonezet es a celzaszlo koruli tiltott zona. A JavaScript fajlok szintaxisellenorzese sikeres volt, de ebben a letrehozasi kornyezetben az npm csomagok letoltese idotullepes miatt nem fejezodott be, ezert teljes, tobbgepes futtatasi tesztet nem tudtam lefuttatni. Az elso inditaskor a start.bat probalja telepiteni a fuggosegeket.
+Javitott 1.4 valtozat: rovid, fix palya; TAB-os ponttabla; W billentyus ugras gombpufferrel es peremsegitseggel; fixlepeses fizika; stabil leeses-visszaallas; valodi lada-platform/oldalutkozes; objektum-figura teglalap alapú csapdaerzekeles; szerver altal ellenorzott csapdaeredmeny; epitmeny-elonezet es a celzaszlo koruli tiltott zona. A JavaScript fajlok szintaxisellenorzese sikeres volt, de ebben a letrehozasi kornyezetben az npm csomagok letoltese idotullepes miatt nem fejezodott be, ezert teljes, tobbgepes futtatasi tesztet nem tudtam lefuttatni. Az elso inditaskor a start.bat probalja telepiteni a fuggosegeket.
+
+
+1.4 FRISSÍTÉS
+- A karakterek külön, vektoros SVG állatsprite-okat használnak két mozgó lábpozícióval.
+- A visszaszámláló a pályán belül, jól látható helyen van.
+- Építkezéskor középen megjelenik, hogy ki van soron.
+- A szobagazda a váróteremben beállíthatja az építkezési időt másodpercben.
+- Egy játékos egy építkezési körben több tárgyat is lerakhat; a kör a skip gombbal vagy időlejárattal ér véget.
+
+
+1.4 - UJ JATEKKEZELES
+- A jatekosok nagyobb, allatszeru, sajat SVG rajzolt karaktereket kapnak, futaskor ket labpozicioval.
+- A verseny- vagy epitkezesi visszaszamlalo a palya feluleten jelenik meg.
+- Epitkezesi fazisban nagy kozepso jelzes mutatja, melyik jatekos van soron.
+- Az epitkezesi ido a varoteremben, a szobagazda beallitasai kozott allithato (5-180 masodperc).
+- Egy epitkezesi turnus alatt tobb epitmeny is lerakhato / pajzs is vasarolhato, amig van arany es idokeret. A turnus a „Kesz / Kihagyom” gombbal vagy az ido lejarataval zarul.

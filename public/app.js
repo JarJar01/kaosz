@@ -8,6 +8,13 @@ const ANIMALS = {
   penguin: { label: 'Pingvin', emoji: '🐧', color: '#202c42' },
   raccoon: { label: 'Mosómedve', emoji: '🦝', color: '#8b98a8' }
 };
+// Local SVG sprite sheets: two leg poses per animal, drawn as crisp vector art.
+const ANIMAL_SPRITES = Object.create(null);
+for (const animalType of Object.keys(ANIMALS)) {
+  const image = new Image();
+  image.src = `/assets/animals/${animalType}.svg`;
+  ANIMAL_SPRITES[animalType] = image;
+}
 const ITEMS = [
   { type: 'crate', name: 'Csapdaláda', icon: '📦', price: 10, desc: 'Ugorjátok át!' },
   { type: 'saw', name: 'Forgó fűrész', icon: '⚙️', price: 25, desc: 'Halálos csapda' },
@@ -187,12 +194,13 @@ function renderLobby() {
       <div class="setting-grid">
         <div><label class="form-label" for="setMaxPlayers">Játékosok száma</label><select class="form-input" id="setMaxPlayers" ${!isHost ? 'disabled' : ''}>${[2,3,4,5,6,7,8].map(n => `<option value="${n}" ${s.maxPlayers===n?'selected':''}>${n} játékos</option>`).join('')}</select></div>
         <div><label class="form-label" for="setGold">Kezdő arany</label><input class="form-input" id="setGold" type="number" min="0" max="9999" value="${s.startGold}" ${!isHost ? 'disabled' : ''}></div>
-        <div><label class="form-label" for="setTime">Köridő (másodperc)</label><input class="form-input" id="setTime" type="number" min="15" max="600" value="${s.roundSeconds}" ${!isHost ? 'disabled' : ''}></div>
+        <div><label class="form-label" for="setTime">Versenyidő (másodperc)</label><input class="form-input" id="setTime" type="number" min="15" max="600" value="${s.roundSeconds}" ${!isHost ? 'disabled' : ''}></div>
+        <div><label class="form-label" for="setBuildTime">Építkezési idő / játékos (mp)</label><input class="form-input" id="setBuildTime" type="number" min="5" max="180" value="${s.buildSeconds || 30}" ${!isHost ? 'disabled' : ''}></div>
         <div><label class="form-label" for="setRounds">Körök száma</label><input class="form-input" id="setRounds" type="number" min="1" max="12" value="${s.rounds}" ${!isHost ? 'disabled' : ''}></div>
         
       </div>
       ${isHost ? '<button class="secondary-button full" id="saveSettingsBtn">Beállítások mentése</button>' : ''}
-      <div class="setting-note">A köridő lejártakor a célba nem érők nem kapnak helyezési pontot. Az aranyat a megtett útért is gyűjtitek. Az építmények a további körökben is a pályán maradnak.</div>
+      <div class="setting-note">A versenyidő lejártakor a célba nem érők nem kapnak helyezési pontot. Az építkezési időt játékosonként a szobagazda állítja. A saját időd alatt annyi tárgyat építhetsz, amennyit az aranyad enged; a végén a tárgyak a pályán maradnak.</div>
     </aside></div>
     <div class="lobby-bottom"><span>🕹️ Mozgás: A/D vagy ←/→ · Ugrás: W · TAB: pontok/arany</span><span>Elsőként célba érő: több pont · Kör végén: építkezés</span></div>`;
 
@@ -214,7 +222,7 @@ function renderLobby() {
     $('saveSettingsBtn').addEventListener('click', () => {
       emitAck('updateSettings', {
         maxPlayers: Number($('setMaxPlayers').value), startGold: Number($('setGold').value),
-        roundSeconds: Number($('setTime').value), rounds: Number($('setRounds').value)
+        roundSeconds: Number($('setTime').value), buildSeconds: Number($('setBuildTime').value), rounds: Number($('setRounds').value)
       }, 'Beállítások elmentve.');
     });
     $('startGameBtn').addEventListener('click', () => emitAck('startGame', {}, 'A verseny indul!'));
@@ -226,8 +234,9 @@ function renderGame() {
   switchScreen('game');
   selectedBuildType = roomState.phase === 'build' && roomState.currentBuilderId === socket.id ? selectedBuildType : null;
   screenGame.innerHTML = `
-    <div class="game-top"><div class="game-title"><h1>🐾 ÁllatKáosz</h1><p id="gameStatusText">${escapeHtml(roomState.statusMessage || '')}</p></div><div class="game-statuses"><div class="status-chip">🏁 Kör <b id="roundChip">${roomState.roundNo}/${roomState.settings.rounds}</b></div><div class="status-chip">⏱️ <b id="timerValue">--:--</b></div><div class="status-chip">🪙 Arany <b id="myGoldValue">${getMe()?.gold ?? 0}</b></div><button class="ghost-button" id="exitGameBtn">Kilépés</button></div></div>
-    <div class="game-layout"><section class="game-main-col"><div class="world-frame"><canvas id="worldCanvas" width="1100" height="620" tabindex="0" aria-label="Az egyetlen közös akadálypálya. Kattints a pályára, majd W ugrás"></canvas><div class="canvas-overlay"><div class="canvas-pill" id="canvasModeLabel">🏃 VERSENY</div><div class="canvas-pill right">🏁 <strong>Érd el a zászlót!</strong> · TAB: pontok</div></div>
+    <div class="game-top"><div class="game-title"><h1>🐾 ÁllatKáosz</h1><p id="gameStatusText">${escapeHtml(roomState.statusMessage || '')}</p></div><div class="game-statuses"><div class="status-chip">🏁 Kör <b id="roundChip">${roomState.roundNo}/${roomState.settings.rounds}</b></div><div class="status-chip">🪙 Arany <b id="myGoldValue">${getMe()?.gold ?? 0}</b></div><button class="ghost-button" id="exitGameBtn">Kilépés</button></div></div>
+    <div class="game-layout"><section class="game-main-col"><div class="world-frame"><canvas id="worldCanvas" width="1100" height="620" tabindex="0" aria-label="Az egyetlen közös akadálypálya. Kattints a pályára, majd W ugrás"></canvas><div class="canvas-overlay"><div class="canvas-pill" id="canvasModeLabel">🏃 VERSENY</div><div class="canvas-timer" id="canvasTimerBox"><small id="inCanvasTimerLabel">VERSENYIDŐ</small><strong id="inCanvasTimer">00:45</strong></div><div class="canvas-pill right">🏁 <strong>Érd el a zászlót!</strong> · TAB: pontok</div></div>
+      <div class="phase-center-notice hidden" id="phaseCenterNotice"><span class="phase-center-icon" id="phaseCenterIcon">🔨</span><div><strong id="phaseCenterTitle">XY MOST ÉPÍTKEZIK</strong><span id="phaseCenterSubtitle">Válassz tárgyakat, és használd fel az aranyad!</span></div></div>
       <section class="score-overlay hidden" id="scoreOverlay" aria-label="Pontok és arany"><div class="score-overlay-head"><strong>🏆 Pontok és arany</strong><button type="button" id="closeScoreButton" aria-label="Bezárás">×</button></div><div class="score-list" id="scoreList"></div><small>Engedd fel a TAB billentyűt az ablak bezárásához.</small></section>
     </div>
       <div class="game-instructions" id="gameInstructions"><span><b>IRÁNYÍTÁS</b> <span class="keycap">A</span><span class="keycap">D</span> / <span class="keycap">←</span><span class="keycap">→</span> futás · <span class="keycap">W</span> ugrás · <span class="keycap">TAB</span> pontok</span><span id="progressInstruction">Aranyat kapsz a megtett útért is.</span></div>
@@ -259,7 +268,7 @@ function renderGame() {
     const type = selectedBuildType;
     socket.emit('placeBuild', { type, x, groundY }, result => {
       if (!result?.ok) toast(result?.error || 'Nem sikerült építeni.');
-      else { selectedBuildType = null; mouseWorld = null; toast('Elhelyezve! A következő játékos jön.'); }
+      else toast('Elhelyezve! Még építhetsz, amíg van aranyad és időd.');
     });
   });
   updateGameChrome(); updateScoreList(); updateChat(); updateBuildControls();
@@ -282,14 +291,29 @@ function updateGameChrome() {
   const round = $('roundChip'); if (round) round.textContent = `${roomState.roundNo}/${roomState.settings.rounds}`;
   const gold = $('myGoldValue'); if (gold) gold.textContent = me?.gold ?? 0;
   const label = $('canvasModeLabel'); if (label) label.textContent = roomState.phase === 'build' ? '🔨 ÉPÍTKEZÉS' : '🏃 VERSENY';
-  const instr = $('progressInstruction'); if (instr) instr.textContent = roomState.phase === 'build' ? 'Válassz egy építményt, majd kattints a pályára!' : 'Minden 250 megtett egység után +4 arany.';
+  const instr = $('progressInstruction'); if (instr) instr.textContent = roomState.phase === 'build' ? 'A saját időd alatt több tárgyat is építhetsz, amíg van aranyad.' : 'Minden 250 megtett egység után +4 arany.';
   const inv = $('inventoryInfo'); if (inv && me) inv.innerHTML = `🛡️ Pajzsok: <b style="color:#ffd66c">${me.shields}</b><br>💀 Halálok: <b>${me.deaths}</b><br>🪙 Arany: <b style="color:#ffd66c">${me.gold}</b><br>🏆 Összpont: <b>${me.score}</b>`;
-  const timer = $('timerValue'); if (timer) {
-    let seconds = 0;
-    if (roomState.phase === 'race' && roomState.roundDeadline) seconds = Math.max(0, Math.ceil((roomState.roundDeadline - Date.now()) / 1000));
-    else if (roomState.phase === 'build' && roomState.buildTurnEndsAt) seconds = Math.max(0, Math.ceil((roomState.buildTurnEndsAt - Date.now()) / 1000));
+  const timer = $('inCanvasTimer');
+  let seconds = 0;
+  if (roomState.phase === 'race' && roomState.roundDeadline) seconds = Math.max(0, Math.ceil((roomState.roundDeadline - Date.now()) / 1000));
+  else if (roomState.phase === 'build' && roomState.buildTurnEndsAt) seconds = Math.max(0, Math.ceil((roomState.buildTurnEndsAt - Date.now()) / 1000));
+  if (timer) {
     timer.textContent = `${String(Math.floor(seconds / 60)).padStart(2,'0')}:${String(seconds % 60).padStart(2,'0')}`;
-    timer.style.color = seconds <= 8 ? '#ff7584' : '#ffd66c';
+    timer.classList.toggle('urgent', seconds <= 8);
+  }
+  const timerLabel = $('inCanvasTimerLabel');
+  const builder = roomState.players?.find(p => p.id === roomState.currentBuilderId);
+  if (timerLabel) timerLabel.textContent = roomState.phase === 'build' ? `${builder?.name || 'ÉPÍTKEZÉS'} IDEJE` : 'VERSENYIDŐ';
+  const notice = $('phaseCenterNotice');
+  if (notice) {
+    const building = roomState.phase === 'build';
+    notice.classList.toggle('hidden', !building);
+    const title = $('phaseCenterTitle');
+    const subtitle = $('phaseCenterSubtitle');
+    const icon = $('phaseCenterIcon');
+    if (title) title.textContent = building ? `${builder?.name || 'A következő játékos'} MOST ÉPÍTKEZIK` : '';
+    if (subtitle) subtitle.textContent = building ? (builder?.id === socket.id ? `Te vagy soron! ${me?.gold ?? 0} aranyad van — több tárgyat is lerakhatsz.` : `Most ${builder?.name || 'egy játékos'} köre van. Építkezési idő: ${roomState.settings?.buildSeconds || 30} mp.`) : '';
+    if (icon) icon.textContent = builder?.id === socket.id ? '🔨' : '🛠️';
   }
 }
 function updateScoreList() {
@@ -311,15 +335,21 @@ function updateBuildControls() {
   const me = getMe(); const isMe = roomState.currentBuilderId === socket.id;
   const builder = roomState.players.find(p => p.id === roomState.currentBuilderId);
   if (!isMe) selectedBuildType = null;
+  if (isMe && selectedBuildType) {
+    const selectedItem = ITEMS.find(item => item.type === selectedBuildType);
+    if (!selectedItem || (me?.gold ?? 0) < selectedItem.price) selectedBuildType = null;
+  }
   const cards = ITEMS.map(item => `<button type="button" class="shop-item ${selectedBuildType===item.type?'selected':''}" data-item="${item.type}" ${!isMe || (me?.gold ?? 0) < item.price ? 'disabled' : ''}><span class="shop-icon">${item.icon}</span><strong>${item.name}</strong><small>🪙 ${item.price}</small></button>`).join('');
-  panel.innerHTML = `<div class="build-top"><div><h3>🔨 Építkezési fázis</h3><p>${isMe ? 'Válassz ikont, majd kattints bárhová a pályán.' : `Most ${escapeHtml(builder?.name || 'egy játékos')} építkezik.`}</p></div><span class="build-turn-pill">${isMe?'TE JÖSSZ':'VÁRJ A SORODRA'}</span></div><div class="shop-grid">${cards}</div><div class="build-footer"><span class="build-help">Az előnézet pontosan mutatja a helyet. Levegőbe is építhetsz; a zászló körül a célzóna tiltott.</span>${isMe?'<button class="ghost-button" id="skipBuildBtn">Kihagyom →</button>':''}</div>`;
+  const affordable = ITEMS.some(item => (me?.gold ?? 0) >= item.price);
+  panel.innerHTML = `<div class="build-top"><div><h3>🔨 Építkezési fázis</h3><p>${isMe ? `Aranyad: ${me?.gold ?? 0} · Több tárgyat is lerakhatsz a saját időd alatt.` : `Most ${escapeHtml(builder?.name || 'egy játékos')} építkezik.`}</p></div><span class="build-turn-pill">${isMe?'TE JÖSSZ':'VÁRJ A SORODRA'}</span></div><div class="shop-grid">${cards}</div><div class="build-footer"><span class="build-help">Válaszd ki az ikont, majd kattints a pályára. Tárgyakat és pajzsot is vehetsz, amíg tart az időd és van aranyad.${isMe && !affordable ? ' Nincs elég aranyad új tárgyra — kihagyhatod a körödet.' : ''}</span>${isMe?'<button class="ghost-button" id="skipBuildBtn">Kész / Kihagyom →</button>':''}</div>`;
   panel.querySelectorAll('[data-item]').forEach(btn => btn.addEventListener('click', () => {
     const type = btn.dataset.item;
     if (type === 'shield') {
-      socket.emit('placeBuild', { type: 'shield' }, result => { if (!result?.ok) toast(result?.error || 'Nem sikerült megvenni.'); else toast('Pajzs megvéve!'); });
+      selectedBuildType = null;
+      socket.emit('placeBuild', { type: 'shield' }, result => { if (!result?.ok) toast(result?.error || 'Nem sikerült megvenni.'); else toast('Pajzs megvéve — folytathatod az építést!'); });
     } else { selectedBuildType = type; updateBuildControls(); toast('Az akadály előnézete követi az egeret. Kattints oda, ahová építeni szeretnél.'); }
   }));
-  if ($('skipBuildBtn')) $('skipBuildBtn').addEventListener('click', () => emitAck('skipBuild', {}, 'Kihagytad az építkezést.'));
+  if ($('skipBuildBtn')) $('skipBuildBtn').addEventListener('click', () => emitAck('skipBuild', {}, 'Építkezés befejezve.'));
 }
 
 const CANVAS_W = 1100, CANVAS_H = 620, GROUND_Y = 430, PLAYER_H = 54, PLAYER_HALF_W = 15;
@@ -608,8 +638,6 @@ function drawWorld(now) {
   if (!isBuild) {
     const myP = players.find(p => p.id === socket.id);
     if (myP?.finished) { ctx.fillStyle='#10233ddb'; roundRect(ctx,w/2-145,65,290,46,14); ctx.fillStyle='#ffe078'; ctx.font='bold 17px Nunito'; ctx.textAlign='center'; ctx.fillText(`🏁 CÉLBA ÉRTÉL! Helyezés: ${myP.finishRank}.`,w/2,94); }
-  } else {
-    ctx.fillStyle = '#10213cdd'; roundRect(ctx, 285, 15, 530, 35, 12); ctx.fill(); ctx.fillStyle='#e9f5ff'; ctx.font='bold 13px Nunito'; ctx.textAlign='center'; ctx.fillText(selectedBuildType ? 'Mozgasd az egeret, majd kattints bárhová az építéshez.' : 'Építkezési fázis: válassz akadályt a jobb oldali panelen.', w/2, 37);
   }
 }
 function roundRect(ctx,x,y,w,h,r) { ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
@@ -687,11 +715,40 @@ function drawObstacle(ctx, o, now) {
   }
   ctx.fillStyle='#14263d55';ctx.beginPath();ctx.ellipse(x,ground+2,o.type==='saw'?24:19,4,0,0,Math.PI*2);ctx.fill();
 }
+function drawAnimalNameTag(ctx, p, x, base, bob) {
+  ctx.save();
+  ctx.font = '900 13px Nunito';
+  const label = p.name || 'Játékos';
+  const width = ctx.measureText(label).width;
+  const tx = x - width / 2 - 8;
+  const ty = base - 84 + bob - (p.labelOffset || 0);
+  ctx.fillStyle = p.id === socket.id ? '#153c54' : '#203752';
+  roundRect(ctx, tx, ty, width + 16, 20, 7); ctx.fill();
+  ctx.strokeStyle = p.id === socket.id ? '#ffe17c' : '#ffffffa0'; ctx.lineWidth = 1.5; ctx.stroke();
+  ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(label, x, ty + 10);
+  ctx.restore();
+}
 function drawAnimal(ctx,p,now) {
   const type=ANIMALS[p.animal] ? p.animal : 'pig';
   const bob=p.moving?Math.sin(now/48)*2.2:Math.sin(now/400+p.joinOrder)*1.1;
   const base=GROUND_Y+(p.y||0);
   const x=p.x;
+  const sprite = ANIMAL_SPRITES[type];
+  if (sprite && sprite.complete && sprite.naturalWidth >= 160) {
+    ctx.save();
+    ctx.fillStyle = '#18465e42'; ctx.beginPath(); ctx.ellipse(x, base + 3, p.moving ? 17 : 20, 4, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.translate(x, base + bob);
+    if (p.face < 0) ctx.scale(-1, 1);
+    const frame = p.moving ? (Math.floor(now / 125) % 2) : 0;
+    ctx.drawImage(sprite, frame * 80, 0, 80, 80, -36, -72, 72, 72);
+    if ((p.shields || 0) > 0) {
+      ctx.strokeStyle = '#8ee9ffbb'; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.ellipse(0, -34, 30, 34, 0, 0, Math.PI * 2); ctx.stroke();
+      ctx.fillStyle = '#b8f6ff'; ctx.font = 'bold 12px Nunito'; ctx.textAlign = 'center'; ctx.fillText('🛡', 0, -66);
+    }
+    ctx.restore();
+    drawAnimalNameTag(ctx, p, x, base, bob);
+    return;
+  }
   ctx.save();
   // shadow
   ctx.fillStyle='#18465e42';ctx.beginPath();ctx.ellipse(x,base+3,p.moving?16:19,4,0,0,Math.PI*2);ctx.fill();
@@ -742,8 +799,8 @@ function drawAnimal(ctx,p,now) {
   if(type!=='penguin'){ctx.fillStyle='#fff';ctx.globalAlpha=.45;ctx.beginPath();ctx.ellipse(-6,-28,3,2,-.3,0,Math.PI*2);ctx.fill();ctx.globalAlpha=1;}
   // name tag
   ctx.restore();
-  ctx.save();ctx.font='bold 13px Nunito';const label=p.name||'Játékos';const tw=ctx.measureText(label).width;const tx=x-tw/2-7;const ty=base-61+bob-(p.labelOffset||0);
-  ctx.fillStyle=p.id===socket.id?'#153c54':'#203752';roundRect(ctx,tx,ty,tw+14,20,7);ctx.fill();ctx.strokeStyle=p.id===socket.id?'#ffe17c':'#ffffff75';ctx.lineWidth=1.5;ctx.stroke();ctx.fillStyle='#fff';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(label,x,ty+10);ctx.restore();
+  ctx.save();ctx.font='900 13px Nunito';const label=p.name||'Játékos';const tw=ctx.measureText(label).width;const tx=x-tw/2-8;const ty=base-84+bob-(p.labelOffset||0);
+  ctx.fillStyle=p.id===socket.id?'#153c54':'#203752';roundRect(ctx,tx,ty,tw+16,20,7);ctx.fill();ctx.strokeStyle=p.id===socket.id?'#ffe17c':'#ffffff75';ctx.lineWidth=1.5;ctx.stroke();ctx.fillStyle='#fff';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(label,x,ty+10);ctx.restore();
 }
 
 window.addEventListener('keydown', e => {

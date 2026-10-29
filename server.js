@@ -100,6 +100,7 @@ function normalizeSettings(raw, currentCount = 0) {
     maxPlayers: clamp(Math.round(Number(raw.maxPlayers) || 8), Math.max(2, currentCount), 8),
     startGold: clamp(Math.round(raw.startGold === 0 || raw.startGold === '0' ? 0 : (Number(raw.startGold) || 100)), 0, 9999),
     roundSeconds: clamp(Math.round(Number(raw.roundSeconds) || 45), 15, 600),
+    buildSeconds: clamp(Math.round(Number(raw.buildSeconds) || 30), 5, 180),
     rounds: clamp(Math.round(Number(raw.rounds) || 5), 1, 12),
     mapLength: MAP_LENGTH
   };
@@ -197,18 +198,21 @@ function beginBuildTurn(room) {
     startRound(room); return;
   }
   room.currentBuilderId = room.buildQueue[room.buildIndex];
-  room.buildTurnEndsAt = Date.now() + 20000;
+  const turnSeconds = room.settings.buildSeconds || 30;
+  room.buildTurnEndsAt = Date.now() + turnSeconds * 1000;
   const builder = getPlayer(room, room.currentBuilderId);
-  room.statusMessage = builder ? `${builder.name} építkezik. Helyezzen el egy akadályt, vagy vásároljon pajzsot.` : 'Építkezés folyamatban.';
+  room.statusMessage = builder ? `${builder.name} most építkezik. Több tárgyat is lerakhat, amíg van aranya.` : 'Építkezés folyamatban.';
+  pushChat(room, 'RENDSZER', `🔨 ${builder ? builder.name : 'A következő játékos'} most építkezik (${turnSeconds} mp).`, true);
   emitRoom(room);
   const expectedId = room.currentBuilderId;
+  const expectedDeadline = room.buildTurnEndsAt;
   room.timer = setTimeout(() => {
-    if (room.phase === 'build' && room.currentBuilderId === expectedId) {
-      pushChat(room, 'RENDSZER', `${builder ? builder.name : 'A játékos'} ideje lejárt; kimaradt az építésből.`, true);
+    if (room.phase === 'build' && room.currentBuilderId === expectedId && room.buildTurnEndsAt === expectedDeadline) {
+      pushChat(room, 'RENDSZER', `${builder ? builder.name : 'A játékos'} építkezési ideje lejárt.`, true);
       room.buildIndex += 1;
       beginBuildTurn(room);
     }
-  }, 20000);
+  }, turnSeconds * 1000);
 }
 function endGame(room) {
   clearRoomTimer(room);
@@ -383,8 +387,10 @@ io.on('connection', socket => {
       room.obstacles.push({ id: `${room.roundNo}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, type, x, groundY, ownerId: p.id, ownerName: p.name, createdRound: room.roundNo });
       pushChat(room, 'RENDSZER', `🔨 ${p.name} épített egyet: ${item.name}.`, true);
     }
-    ack({ ok: true });
-    room.buildIndex += 1; beginBuildTurn(room); emitRoom(room);
+    // A builder stays active after every purchase/placement and may keep building
+    // until their configurable timer ends or they press Skip.
+    emitRoom(room);
+    ack({ ok: true, gold: p.gold, shields: p.shields, buildTurnEndsAt: room.buildTurnEndsAt });
   });
 
   socket.on('skipBuild', (_payload, ack = () => {}) => {
