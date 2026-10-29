@@ -1,19 +1,28 @@
 ALLATKAOSZ — ONLINE 2D ALLATOS AKADALYVERSENY
 ================================================
 
+JAVITASOK EBBEN A VALTOZATBAN
+---------------------------
+- A mozgasi csomag megorzi a karakter nevet es allatfajtat, ez csokkenti a karakter visszavaltasat/villogasat
+- HALAL vagy pajzsos visszalokes utan a kliens koveti a szerver poziciojat
+- A jatekosok a bal oldali rajtplatformon kissé eltolva indulnak, a nevtablakat negy sorban rendezi a jatek
+- A TAB-os ponttabla a jatek kozben jelenik meg, a Space nem ugras
+- Az epitmeny csak valodi platformra helyezheto; valasztaskor szellem-elonezet latszik a palyan
+
 A prototipus fo jellemzoi
 ------------------------
 - 2-8 jatekos egy szobaban, szobakoddal
 - Malac, kapibara, lo, pingvin es mosomedve karakterek
 - 2D oldalnezetes, kozos palya; mindenki egyszerre indul
 - Futas es ugras animacioval; forgó furesz es egyeb mozgó/rajzolt csapdak
-- A szobagazda allitja a kezdo aranyat, a koridot, a korok szamat es a palyahosszt
+- A szobagazda allitja a kezdo aranyat, a koridot es a korok szamat; mindenki egy rovid, fix palyan jatszik
 - A celba erkezesi sorrend pontokat er; aki az ido lejarataig nem er celba, nem kap helyezesi pontot arra a korre
 - A megtett ut kozben aranyat is ad
 - Minden kor utan a jatekosok egyenkent epitkeznek, a sorrend koronkent forog
 - 5 epitmeny: csapdalada, forgo furesz, tuskek, rugos kilovo, gurulo hordo
 - Pajzs vasarolhato; egy halalos talalatotol megved, es visszalok
-- A palyara helyezett akadalyok a tovabbi korokben is megmaradnak
+- Egyetlen rovid, fix palya tobb platformmal; az alapcsapdak adottak, a jatekosok epitmenyei a tovabbi korokben is megmaradnak
+- Epitmenyt csak valodi fuves platformra lehet elhelyezni; a valasztott targy atatlatszo elonezete mutatja a celhelyet
 - Chat es osszesitett ponttabla
 - A menu grafikaval, a karakterek es a palya pedig animalt, rajzolt megjelenessel keszulnek
 
@@ -49,9 +58,10 @@ IRANYITAS
 ---------
 A / Bal nyil: balra
 D / Jobb nyil: jobbra
-Space / W / Fel nyil: ugras
-Epitkezeskor: valassz egy epitmenyt, majd kattints a palya terkepere a hely kivalasztasahoz.
+W: ugras (a Space nem ugrik)
+TAB: ponttabla es arany megjelenitese (nyomva tartva)
+Epitkezeskor: valassz egy epitmeny-ikont a jobb oldali panelen, majd kattints a fuves platformra. A levegobe es viz fole nem lehet epiteni.
 
 MEGJEGYZES
 ----------
-Ez egy elso, jatszhato prototipus. A JavaScript fajlok szintaxisellenorzese sikeres volt, de ebben a letrehozasi kornyezetben az npm csomagok letoltese idotullepes miatt nem fejezodott be, ezert teljes, tobbgepes futtatasi tesztet nem tudtam lefuttatni. Az elso inditaskor a start.bat probalja telepiteni a fuggosegeket.
+Javitott valtozat: egy rovid, fix palya; TAB-os ponttabla; W billentyus ugras; animalt allatkarakterek; platformhoz kotott epitkezes. A JavaScript fajlok szintaxisellenorzese sikeres volt, de ebben a letrehozasi kornyezetben az npm csomagok letoltese idotullepes miatt nem fejezodott be, ezert teljes, tobbgepes futtatasi tesztet nem tudtam lefuttatni. Az elso inditaskor a start.bat probalja telepiteni a fuggosegeket.

@@ -7,6 +7,16 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: '*' } });
 const PORT = Number(process.env.PORT || 3000);
+const MAP_LENGTH = 1100;
+const GROUND_Y = 430;
+const PLATFORMS = [
+  { x: 0, width: 290, top: 430 },
+  { x: 324, width: 128, top: 475 },
+  { x: 475, width: 166, top: 395 },
+  { x: 665, width: 142, top: 428 },
+  { x: 830, width: 116, top: 470 },
+  { x: 958, width: 142, top: 390 }
+];
 app.use(express.static(path.join(__dirname, 'public')));
 app.get('/health', (_req, res) => res.json({ ok: true, game: 'AllatKáosz' }));
 
@@ -43,7 +53,7 @@ function getRoom(socket) {
 function getPlayer(room, id) { return room.players.find(p => p.id === id); }
 function publicPlayer(p) {
   return {
-    id: p.id, name: p.name, animal: p.animal, joinOrder: p.joinOrder,
+    id: p.id, name: p.name, animal: p.animal, joinOrder: p.joinOrder, startX: p.startX,
     x: p.x, y: p.y, face: p.face, moving: p.moving, jumping: p.jumping,
     score: p.score, gold: p.gold, shields: p.shields, finished: p.finished,
     finishRank: p.finishRank, deaths: p.deaths, connected: p.connected
@@ -63,7 +73,8 @@ function publicRoom(room) {
 function emitRoom(room) { io.to(room.code).emit('roomState', publicRoom(room)); }
 function emitPositions(room) {
   io.to(room.code).emit('playersMoved', room.players.map(p => ({
-    id: p.id, x: p.x, y: p.y, face: p.face, moving: p.moving, jumping: p.jumping,
+    id: p.id, name: p.name, animal: p.animal, joinOrder: p.joinOrder, startX: p.startX,
+    x: p.x, y: p.y, face: p.face, moving: p.moving, jumping: p.jumping,
     score: p.score, gold: p.gold, shields: p.shields, finished: p.finished,
     finishRank: p.finishRank, deaths: p.deaths
   })));
@@ -77,7 +88,7 @@ function createPlayer(socket, payload) {
   const animal = ANIMALS.has(payload && payload.animal) ? payload.animal : 'pig';
   return {
     id: socket.id, name: cleanName(payload && payload.name), animal, joinOrder: nextJoinOrder++,
-    x: 45, y: 0, face: 1, moving: false, jumping: false,
+    startX: 45, x: 45, y: 0, face: 1, moving: false, jumping: false,
     score: 0, gold: 100, shields: 0, finished: false, finishRank: null, deaths: 0,
     connected: true, maxMilestonePaid: 0, hitCooldownUntil: 0
   };
@@ -89,7 +100,7 @@ function normalizeSettings(raw, currentCount = 0) {
     startGold: clamp(Math.round(raw.startGold === 0 || raw.startGold === '0' ? 0 : (Number(raw.startGold) || 100)), 0, 9999),
     roundSeconds: clamp(Math.round(Number(raw.roundSeconds) || 45), 15, 600),
     rounds: clamp(Math.round(Number(raw.rounds) || 5), 1, 12),
-    mapLength: clamp(Math.round(Number(raw.mapLength) || 2200), 1500, 3600)
+    mapLength: MAP_LENGTH
   };
 }
 function roomForSocket(socket) {
@@ -101,13 +112,27 @@ function clearRoomTimer(room) {
   if (room.timer) clearTimeout(room.timer);
   room.timer = null;
 }
-function resetPlayerForRace(p) {
-  p.x = 45; p.y = 0; p.face = 1; p.moving = false; p.jumping = false;
+function resetPlayerForRace(p, index = 0) {
+  // Slightly stagger the starting spots so all chosen animals and nameplates remain visible.
+  // The entire group still begins on the left-most starting platform.
+  p.startX = 36 + index * 28;
+  p.x = p.startX; p.y = 0; p.face = 1; p.moving = false; p.jumping = false;
   p.finished = false; p.finishRank = null; p.maxMilestonePaid = 0; p.hitCooldownUntil = 0;
+}
+function platformAtX(x, padding = 24) {
+  return PLATFORMS.find(p => x >= p.x + padding && x <= p.x + p.width - padding) || null;
+}
+function defaultObstacles() {
+  // A small amount of course hazard is present at the start; later builds stay between rounds.
+  return [
+    { id: 'course-crate', type: 'crate', x: 390, groundY: 475, ownerId: null, ownerName: 'Pálya', createdRound: 0, builtIn: true },
+    { id: 'course-spikes', type: 'spikes', x: 542, groundY: 395, ownerId: null, ownerName: 'Pálya', createdRound: 0, builtIn: true },
+    { id: 'course-saw', type: 'saw', x: 876, groundY: 470, ownerId: null, ownerName: 'Pálya', createdRound: 0, builtIn: true }
+  ];
 }
 function startNewGame(room) {
   clearRoomTimer(room);
-  room.roundNo = 0; room.obstacles = []; room.lastResults = []; room.winnerId = null;
+  room.roundNo = 0; room.obstacles = defaultObstacles(); room.lastResults = []; room.winnerId = null;
   room.players.forEach(p => {
     p.score = 0; p.gold = room.settings.startGold; p.shields = 0; p.deaths = 0; p.maxMilestonePaid = 0;
   });
@@ -120,7 +145,7 @@ function startRound(room) {
   room.phase = 'race'; room.roundDeadline = Date.now() + room.settings.roundSeconds * 1000;
   room.currentBuilderId = null; room.buildQueue = []; room.buildTurnEndsAt = null;
   room.lastResults = [];
-  room.players.forEach(resetPlayerForRace);
+  [...room.players].sort((a, b) => a.joinOrder - b.joinOrder).forEach((p, index) => resetPlayerForRace(p, index));
   room.statusMessage = `Verseny! ${room.settings.roundSeconds} másodpercetek van a célba érni.`;
   pushChat(room, 'RENDSZER', `A(z) ${room.roundNo}. kör elindult! Mindenki egyszerre rajtol.`, true);
   emitRoom(room); emitPositions(room);
@@ -137,7 +162,7 @@ function finishPlayer(room, player) {
   player.score += SCORE_BY_RANK[rankIndex] || 10;
   player.gold += GOLD_BY_RANK[rankIndex] || 5;
   player.x = room.settings.mapLength - 66;
-  player.y = 0;
+  player.y = PLATFORMS[PLATFORMS.length - 1].top - GROUND_Y;
   player.moving = false;
   pushChat(room, 'RENDSZER', `🏁 ${player.name} beért a(z) ${player.finishRank}. helyen! +${SCORE_BY_RANK[rankIndex] || 10} pont.`, true);
   emitPositions(room); emitRoom(room);
@@ -278,17 +303,23 @@ io.on('connection', socket => {
     const p = getPlayer(room, socket.id); if (!p || p.finished || Date.now() < p.hitCooldownUntil) return;
     const obstacle = room.obstacles.find(o => o.id === payload.id);
     if (!obstacle || Math.abs(p.x - obstacle.x) > 105) return;
+    const obstacleGround = Number.isFinite(obstacle.groundY) ? obstacle.groundY : GROUND_Y;
+    const playerFeet = GROUND_Y + p.y;
+    if (Math.abs(playerFeet - obstacleGround) > 48) return;
     p.hitCooldownUntil = Date.now() + 850;
     if (obstacle.type === 'spring') {
-      p.y = -145; p.x = Math.min(room.settings.mapLength - 100, p.x + 18);
+      p.y = (obstacleGround - GROUND_Y) - 145; p.x = Math.min(room.settings.mapLength - 100, p.x + 18);
       pushChat(room, 'RENDSZER', `${p.name} felrepült a rugós kilövővel!`, true);
     } else if (obstacle.type === 'crate') {
       return;
     } else if (p.shields > 0) {
-      p.shields -= 1; p.x = Math.max(45, p.x - 90); p.y = 0;
+      p.shields -= 1;
+      const safePlatform = platformAtX(obstacle.x, 20);
+      p.x = safePlatform ? clamp(obstacle.x - 82, safePlatform.x + 24, safePlatform.x + safePlatform.width - 24) : Math.max(45, p.x - 90);
+      p.y = obstacleGround - GROUND_Y;
       pushChat(room, 'RENDSZER', `🛡️ ${p.name} pajzsa megvédte a csapdától!`, true);
     } else {
-      p.deaths += 1; p.x = 45; p.y = 0; p.moving = false; p.jumping = false;
+      p.deaths += 1; p.x = p.startX ?? 36; p.y = 0; p.moving = false; p.jumping = false;
       pushChat(room, 'RENDSZER', `💥 ${p.name} belefutott egy csapdába, és visszakerült a rajthoz!`, true);
     }
     emitPositions(room); emitRoom(room);
@@ -305,10 +336,15 @@ io.on('connection', socket => {
       p.gold -= item.cost; p.shields += 1;
       pushChat(room, 'RENDSZER', `🛡️ ${p.name} vásárolt egy pajzsot.`, true);
     } else {
-      const x = clamp(Math.round(Number(payload.x) || 0), 220, room.settings.mapLength - 180);
-      if (room.obstacles.some(o => Math.abs(o.x - x) < (type === 'crate' ? 66 : 88))) return ack({ ok: false, error: 'Túl közel van egy másik akadályhoz; válassz másik helyet.' });
+      const x = clamp(Math.round(Number(payload.x) || 0), 30, MAP_LENGTH - 30);
+      const platform = platformAtX(x, 28);
+      if (!platform) return ack({ ok: false, error: 'Ide nem lehet építeni. Válassz egy füves platformot, ne levegőt vagy vizet.' });
+      const minSpacing = type === 'crate' ? 58 : 70;
+      if (room.obstacles.some(o => Math.abs(o.x - x) < minSpacing && Math.abs((Number.isFinite(o.groundY) ? o.groundY : GROUND_Y) - platform.top) < 18)) {
+        return ack({ ok: false, error: 'Túl közel van egy másik akadályhoz. Válassz egy másik helyet a platformon.' });
+      }
       p.gold -= item.cost;
-      room.obstacles.push({ id: `${room.roundNo}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, type, x, ownerId: p.id, ownerName: p.name, createdRound: room.roundNo });
+      room.obstacles.push({ id: `${room.roundNo}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, type, x, groundY: platform.top, ownerId: p.id, ownerName: p.name, createdRound: room.roundNo });
       pushChat(room, 'RENDSZER', `🔨 ${p.name} épített egyet: ${item.name}.`, true);
     }
     ack({ ok: true });
