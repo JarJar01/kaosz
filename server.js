@@ -9,7 +9,10 @@ const io = new Server(server, { cors: { origin: '*' } });
 const PORT = Number(process.env.PORT || 3000);
 const MAP_LENGTH = 1100;
 const GROUND_Y = 430;
+const SPAWN_SAFE_ZONE = { left: 0, right: 260, top: 315, bottom: 440 };
 const GOAL_SAFE_ZONE = { left: 948, right: 1098, top: 250, bottom: 422 };
+const OBJECT_DELETE_COST = 8;
+const OBJECT_MOVE_COST = 12;
 const PLATFORM_LAYOUTS = {
   meadow: [
     { x: 0, width: 290, top: 430 }, { x: 324, width: 128, top: 475 },
@@ -457,6 +460,7 @@ io.on('connection', socket => {
       // Keep only a small square around the goal flag clear, allowing building
       // elsewhere on the course, in mid-air or over water.
       const candidateBounds = obstacleBounds(type, x, groundY);
+      if (overlapsRect(candidateBounds, SPAWN_SAFE_ZONE)) return ack({ ok: false, error: 'A rajt körüli védett mezőbe nem lehet építeni!' });
       if (overlapsRect(candidateBounds, GOAL_SAFE_ZONE)) return ack({ ok: false, error: 'A zászló körüli kis négyzetet szabadon kell hagyni!' });
       // Every object has a matching hitbox; reject placements that would overlap
       // an existing object, so players cannot stack traps or crates on each other.
@@ -470,6 +474,43 @@ io.on('connection', socket => {
     // until their configurable timer ends or they press Skip.
     emitRoom(room);
     ack({ ok: true, gold: p.gold, shields: p.shields, buildTurnEndsAt: room.buildTurnEndsAt });
+  });
+
+  socket.on('deleteObstacle', (payload = {}, ack = () => {}) => {
+    const room = getRoom(socket); if (!room) return ack({ ok: false, error: 'Nem vagy szobában.' });
+    const p = getPlayer(room, socket.id);
+    if (room.phase !== 'build' || room.currentBuilderId !== socket.id) return ack({ ok: false, error: 'Most nem te építkezel.' });
+    const index = room.obstacles.findIndex(o => o.id === String(payload.id || ''));
+    if (index < 0) return ack({ ok: false, error: 'A kiválasztott tárgy már nem található.' });
+    const obstacle = room.obstacles[index];
+    if (p.gold < OBJECT_DELETE_COST) return ack({ ok: false, error: `A törlés ${OBJECT_DELETE_COST} aranyba kerül.` });
+    p.gold -= OBJECT_DELETE_COST;
+    room.obstacles.splice(index, 1);
+    pushChat(room, 'RENDSZER', `🗑️ ${p.name} törölt egy építményt (${OBJECT_DELETE_COST} aranyért).`, true);
+    emitRoom(room);
+    ack({ ok: true, gold: p.gold, cost: OBJECT_DELETE_COST });
+  });
+
+  socket.on('moveObstacle', (payload = {}, ack = () => {}) => {
+    const room = getRoom(socket); if (!room) return ack({ ok: false, error: 'Nem vagy szobában.' });
+    const p = getPlayer(room, socket.id);
+    if (room.phase !== 'build' || room.currentBuilderId !== socket.id) return ack({ ok: false, error: 'Most nem te építkezel.' });
+    const obstacle = room.obstacles.find(o => o.id === String(payload.id || ''));
+    if (!obstacle) return ack({ ok: false, error: 'A kiválasztott tárgy már nem található.' });
+    if (p.gold < OBJECT_MOVE_COST) return ack({ ok: false, error: `A mozgatás ${OBJECT_MOVE_COST} aranyba kerül.` });
+    const rawX = Number(payload.x), rawGroundY = Number(payload.groundY);
+    const x = clamp(Math.round(Number.isFinite(rawX) ? rawX : obstacle.x), 28, MAP_LENGTH - 28);
+    const groundY = clamp(Math.round(Number.isFinite(rawGroundY) ? rawGroundY : obstacle.groundY), 50, 600);
+    const candidateBounds = obstacleBounds(obstacle.type, x, groundY);
+    if (overlapsRect(candidateBounds, SPAWN_SAFE_ZONE)) return ack({ ok: false, error: 'A rajt körüli védett mezőbe nem lehet tárgyat mozgatni.' });
+    if (overlapsRect(candidateBounds, GOAL_SAFE_ZONE)) return ack({ ok: false, error: 'A zászló körüli védett négyzetet szabadon kell hagyni.' });
+    const collides = room.obstacles.some(o => o.id !== obstacle.id && overlapsRect(candidateBounds, obstacleBounds(o.type, Number(o.x) || 0, Number.isFinite(o.groundY) ? o.groundY : GROUND_Y), 1));
+    if (collides) return ack({ ok: false, error: 'Itt már van egy tárgy — ne rakd egymásra az építményeket!' });
+    p.gold -= OBJECT_MOVE_COST;
+    obstacle.x = x; obstacle.groundY = groundY;
+    pushChat(room, 'RENDSZER', `↔️ ${p.name} áthelyezett egy építményt (${OBJECT_MOVE_COST} aranyért).`, true);
+    emitRoom(room);
+    ack({ ok: true, gold: p.gold, cost: OBJECT_MOVE_COST });
   });
 
   socket.on('skipBuild', (_payload, ack = () => {}) => {
@@ -523,7 +564,7 @@ function leaveRoom(socket) {
 
 server.listen(PORT, '0.0.0.0', () => {
   console.log('==========================================');
-  console.log('  ALLATKAOSZ 1.7 - online 2D versenyjatek');
+  console.log('  ALLATKAOSZ 1.8 - online 2D versenyjatek');
   console.log(`  Helyben: http://localhost:${PORT}`);
   console.log('  Helyi halozaton: http://A_SZERVER_GEP_IP_CIME:' + PORT);
   console.log('  Leallitas: CTRL+C');

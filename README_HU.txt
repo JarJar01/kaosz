@@ -1,7 +1,7 @@
 ALLATKAOSZ — ONLINE 2D ALLATOS AKADALYVERSENY
 ================================================
 
-JAVITASOK EBBEN A VALTOZATBAN (1.7)
+JAVITASOK EBBEN A VALTOZATBAN (1.8)
 ---------------------------
 - A helyi karakter mozgasa helyben szimulalt; a halozati poziciok nem irjak felul minden frame-ben. Az ugrashoz gombpuffer es peremsegitseg van, a palya/platform utkozesek toleransabbak
 - A fizika fix 120 Hz-es lepesekkel fut, az ugrashoz 180 ms-os gombpuffer es 140 ms-os peremsegitseg tartozik; a tavoli karakterek pozicioja simitva jelenik meg
@@ -110,17 +110,30 @@ Javitott 1.6 valtozat: rovid, fix palya; TAB-os ponttabla; W billentyus ugras go
 A 1.6-os változatban a szobagazda 4 pályavilágból választhat: Kezdő mező, Hold, Mars, Város. A világok saját háttérrel és módosított platformelrendezéssel rendelkeznek. Minden futam 3–2–1–MEHET visszaszámlálással indul, az utolsó körben pedig külön 'UTOLSÓ KÖR! GYERÜNK, VADÁLLATOK!' jelzés jelenik meg.
 
 
-1.7-ES FRISSÍTÉS
+1.8-AS FRISSÍTÉS
 - Négy választható világ: Kezdő mező, Hold, Mars, Város; a világok eltérő hátteret és platformmagasságokat használnak.
 - A futam 3–2–1–MEHET visszaszámlálással indul; az utolsó kör külön, feltűnő üzenetet kap.
 - Kisebb rajzolt állatkarakterek és szűkebb fizikai hitbox; lendületesebb lábanimáció, enyhe squash/bob mozgással.
 - A HUD frissítése ritkábban módosítja a DOM-ot, a statikus hátterek gyorsítótárból rajzolódnak a terhelés csökkentésére.
 - Plusz segítségek vásárolhatók: Mentőöv (egy esésnél visszatesz az előző platformra) és Ugrócsizma (a következő ugrást magasítja), a pajzs mellett.
 
-1.7-ES FRISSÍTÉS – RÉSZLETEK
+1.8-AS FRISSÍTÉS – RÉSZLETEK
 - Négy pályavilág a váróteremben: Kezdő mező, Hold, Mars, Város. Mindegyik saját háttérrel és platformelrendezéssel rendelkezik.
 - Közös 3–2–1–MEHET visszaszámlálás; az utolsó körben nagy, feltűnő 'UTOLSÓ KÖR! GYERÜNK, VADÁLLATOK!' jelzés.
 - Kisebb karakterrajz és keskenyebb fizikai hitbox, futáskor váltakozó lábpozícióval, rugózó mozgással.
 - Kisebb kliensoldali terhelés: a háttér gyorsítótárazott, a HUD nem írja újra a DOM-ot minden hálózati pozíciócsomagnál.
 - Plusz segítségek építkezéskor: Pajzs (egy csapdát kivéd), Mentőöv (egyszer visszatesz az előző platformra eséskor), Ugrócsizma (a következő ugrást magasabbra teszi).
 - A zászló körüli építésmentes téglalap kissé nagyobb, de továbbra sem zárja el az egész függőleges sávot.
+
+
+1.8-AS FRISSÍTÉS – ÚJDONSÁGOK
+---------------------------
+- A futási sebesség jelentősen lassabb (a helyi karakter 155 pályaegység/másodperc sebességgel mozog).
+- A karakterek nagyobb, 60x60-as rajzolt SVG-sprite-tal láthatók, a két lépésfázis lassabb ütemben váltakozik, a névtábla a nagyobb sprite-hoz igazodik.
+- A W ugrás változó magasságú: rövid megnyomásra alacsony ugrás, nyomva tartva fokozatosan magasabb; a Space továbbra sem ugrik.
+- A rajtnál egy védett téglalap van (x=0–260), ahová nem lehet építeni vagy tárgyat áthelyezni. A cél körüli védett mező szintén megmarad.
+- Új építkezési műveletek: pályán lévő objektum törlése 8 aranyért, illetve áthelyezése 12 aranyért. Az alap pályaobjektumok is módosíthatók; minden művelethez megfelelő arany és nem védett, üres célpont szükséges.
+- A tárgymozgatás két kattintásos: válaszd a Mozgatást, kattints az áthelyezendő objektumra, majd kattints az új helyére. A törlésnél a Törlés eszköz kiválasztása után a törlendő objektumra kell kattintani.
+- Az új védett rajtzóna az építkezési fázisban zöld színnel, a célzóna pirossal látszik.
+
+FONTOS: A törlés és áthelyezés műveleteihez a játékos építkezési köre és a megfelelő aranymennyiség szükséges.
