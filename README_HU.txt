@@ -1,7 +1,7 @@
 ALLATKAOSZ — ONLINE 2D ALLATOS AKADALYVERSENY
 ================================================
 
-JAVITASOK EBBEN A VALTOZATBAN (1.8)
+JAVITASOK EBBEN A VALTOZATBAN (1.9)
 ---------------------------
 - A helyi karakter mozgasa helyben szimulalt; a halozati poziciok nem irjak felul minden frame-ben. Az ugrashoz gombpuffer es peremsegitseg van, a palya/platform utkozesek toleransabbak
 - A fizika fix 120 Hz-es lepesekkel fut, az ugrashoz 180 ms-os gombpuffer es 140 ms-os peremsegitseg tartozik; a tavoli karakterek pozicioja simitva jelenik meg
@@ -137,3 +137,11 @@ A 1.6-os változatban a szobagazda 4 pályavilágból választhat: Kezdő mező,
 - Az új védett rajtzóna az építkezési fázisban zöld színnel, a célzóna pirossal látszik.
 
 FONTOS: A törlés és áthelyezés műveleteihez a játékos építkezési köre és a megfelelő aranymennyiség szükséges.
+
+
+1.9-AS FRISSÍTÉS – CÉLBA ÉRÉS, ÁLLATSPRITE-OK ÉS OBJEKTUMTÖRLÉS
+- A célba érő játékosok a chatben helyezést, pontjutalmat és aranyjutalmat kapnak kiírva; az első helyezett külön kiemelt üzenetet kap.
+- Frissített, részletesebb, két futó pózt tartalmazó SVG állatgrafikák: malac, kapibara, ló, pingvin és mosómedve.
+- Építkezési fázisban a pálya tárgyainak listájában mindegyik mellett külön Törlés gomb van. A beépített pályaelemek is törölhetők; a művelet 8 aranyba kerül. A pályán kattintással történő törlés is megmaradt.
+- A törlés és mozgatás kijelölése elnézőbb kattintási területet kapott.
+- A rajt és a cél körüli építésmentes zóna látható védelmet kap.

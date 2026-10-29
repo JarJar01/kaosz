@@ -26,11 +26,16 @@ const ITEMS = [
   { type: 'lifebuoy', name: 'Mentőöv', icon: '🛟', price: 30, desc: 'Egy leesést megúszol' },
   { type: 'jumpboots', name: 'Ugrócsizma', icon: '🥾', price: 35, desc: 'A következő ugrásod magasabb' }
 ];
+const EDIT_TOOLS = [
+  { type: 'delete-tool', name: 'Objektum törlése', icon: '🗑️', price: 8, desc: 'Egy pályatárgy eltávolítása' },
+  { type: 'move-tool', name: 'Objektum mozgatása', icon: '↔️', price: 12, desc: 'Egy pályatárgy áthelyezése' }
+];
 let roomState = null;
 let livePlayers = [];
 let currentScreen = 'home';
 let currentRenderedPhase = null;
 let selectedBuildType = null;
+let movingObstacleId = null;
 let preferredName = '';
 let toastTimeout = null;
 let buildNoticeTimer = null;
@@ -57,9 +62,14 @@ let mouseWorld = null;
 let jumpQueuedUntil = 0;
 let jumpHeld = false;
 let jumpLaunchedByW = false;
+let jumpHoldElapsed = 0;
+let activeJumpHoldForce = 2150;
+let activeJumpMaxPower = -625;
 const JUMP_BUFFER_MS = 180;
+const JUMP_START_POWER = -210;
+const JUMP_HOLD_MAX_SECONDS = 0.26;
+const JUMP_HOLD_FORCE = 2150;
 const JUMP_FULL_POWER = -625;
-const JUMP_TAP_POWER = -355;
 const COYOTE_TIME_MS = 140;
 let rafId = null;
 
@@ -108,7 +118,7 @@ socket.on('roomState', next => {
   }
   if (priorCode !== next.code) { sceneCache = { theme: null, canvas: null }; lastObservedRoundKey = ''; lastRoundBannerUntil = 0; }
   livePlayers = (next.players || []).map(p => ({ ...p }));
-  if (priorCode !== next.code) selectedBuildType = null;
+  if (priorCode !== next.code) { selectedBuildType = null; movingObstacleId = null; }
   if (next.phase === 'lobby') {
     currentRenderedPhase = 'lobby'; renderLobby();
   } else if (next.phase === 'race' || next.phase === 'build') {
@@ -125,9 +135,9 @@ socket.on('roomState', next => {
         motion = { x: me?.x ?? me?.startX ?? 45, y: me?.y ?? 0, vy: 0, face: 1, moving: false, jumping: false, grounded: true, coyoteUntil: 0, pauseUntil: 0 };
         lastDeathCount = me?.deaths ?? 0; lastShieldCount = me?.shields ?? 0; lastLifebuoyCount = me?.lifebuoys ?? 0;
         lastFallAt = 0; lastSendAt = 0;
-        jumpQueuedUntil = 0; jumpHeld = false; jumpLaunchedByW = false; jumpBoostActiveThisJump = false;
+        jumpQueuedUntil = 0; jumpHeld = false; jumpLaunchedByW = false; jumpHoldElapsed = 0; activeJumpHoldForce = JUMP_HOLD_FORCE; activeJumpMaxPower = JUMP_FULL_POWER; jumpBoostActiveThisJump = false;
       }
-      if (next.phase !== 'build' || next.currentBuilderId !== socket.id) selectedBuildType = null;
+      if (next.phase !== 'build' || next.currentBuilderId !== socket.id) { selectedBuildType = null; movingObstacleId = null; }
       renderGame();
     } else {
       updateGameChrome(); updateScoreList(); updateChat();
@@ -203,10 +213,10 @@ function renderLobby() {
   const animalCards = Object.entries(ANIMALS).map(([key, animal]) => `
     <button class="animal-choice ${me?.animal === key ? 'selected' : ''}" data-animal="${key}" type="button">
       ${me?.animal === key ? '<span class="selected-label">KIVÁLASZTVA</span>' : ''}
-      <span class="animal-emoji">${animal.emoji}</span><strong>${animal.label}</strong>
+      <span class="animal-sprite-preview"><img src="/assets/animals/${key}.svg" alt="" loading="eager"></span><strong>${animal.label}</strong>
     </button>`).join('');
   const playerRows = players.map(p => `
-    <div class="player-row"><div class="player-avatar">${ANIMALS[p.animal]?.emoji || '🐾'}</div><div class="player-meta"><strong>${escapeHtml(p.name)} ${p.id === socket.id ? '<span class="muted">(Te)</span>' : ''}</strong><small>${ANIMALS[p.animal]?.label || 'Állat'} · ${p.connected ? 'Készen áll' : 'Kilépett'}</small></div>${p.id === roomState.hostId ? '<span class="host-tag">👑 GAZDA</span>' : ''}</div>`).join('');
+    <div class="player-row"><div class="player-avatar"><span class="animal-mini-sprite"><img src="/assets/animals/${ANIMALS[p.animal] ? p.animal : 'pig'}.svg" alt=""></span></div><div class="player-meta"><strong>${escapeHtml(p.name)} ${p.id === socket.id ? '<span class="muted">(Te)</span>' : ''}</strong><small>${ANIMALS[p.animal]?.label || 'Állat'} · ${p.connected ? 'Készen áll' : 'Kilépett'}</small></div>${p.id === roomState.hostId ? '<span class="host-tag">👑 GAZDA</span>' : ''}</div>`).join('');
   const waitingRows = Array.from({ length: Math.max(0, s.maxPlayers - players.length) }, () => '<div class="player-row waiting-row"><div class="player-avatar">＋</div><div class="player-meta"><strong>Várjuk a játékost…</strong><small>Szobakóddal csatlakozhat</small></div></div>').join('');
   screenLobby.innerHTML = `
     <div class="lobby-heading"><div><h1>🐾 ÁllatKáosz — váróterem</h1><p>Válassz állatot, hívd be a barátaidat, és készítsétek elő a pályát!</p></div><div class="code-badge"><div><small>MEGHÍVÓKÓD</small><strong>${roomState.code}</strong></div><button id="copyCodeBtn" class="ghost-button">📋 Másolás</button></div></div>
@@ -286,13 +296,43 @@ function renderGame() {
   canvas.addEventListener('click', e => {
     if (!roomState || roomState.phase !== 'build' || !selectedBuildType) return;
     if (roomState.currentBuilderId !== socket.id) return toast('Most nem te építkezel.');
-    if (selectedBuildType === 'shield') return toast('A pajzsot a jobb oldali ikonra kattintva tudod megvenni.');
     const rect = canvas.getBoundingClientRect();
     const rawX = ((e.clientX - rect.left) / rect.width) * CANVAS_W;
     const rawY = ((e.clientY - rect.top) / rect.height) * CANVAS_H;
     const x = Math.max(28, Math.min(CANVAS_W - 28, rawX));
-    // The cursor marks the center of the build; groundY is the sprite's lower anchor.
     const groundY = Math.max(50, Math.min(600, rawY + 20));
+
+    if (selectedBuildType === 'delete-tool') {
+      const target = findObstacleAt(rawX, rawY);
+      if (!target) return toast('Kattints egy lerakott tárgyra a törléshez.');
+      socket.emit('deleteObstacle', { id: target.id }, result => {
+        if (!result?.ok) toast(result?.error || 'Nem sikerült törölni.');
+        else toast(`🗑️ Tárgy törölve. −8 arany. Maradt: ${result.gold}`);
+      });
+      return;
+    }
+
+    if (selectedBuildType === 'move-tool') {
+      if (!movingObstacleId) {
+        const target = findObstacleAt(rawX, rawY);
+        if (!target) return toast('Először kattints arra a tárgyra, amelyet mozgatni szeretnél.');
+        movingObstacleId = target.id;
+        updateBuildControls();
+        toast('Most kattints az új helyre. A mozgatás 12 aranyba kerül.');
+        return;
+      }
+      const target = roomState.obstacles.find(o => o.id === movingObstacleId);
+      if (!target) { movingObstacleId = null; return toast('A kiválasztott tárgy már nem található.'); }
+      const placementError = getBuildPlacementError(target.type, x, groundY, movingObstacleId);
+      if (placementError) return toast(placementError);
+      socket.emit('moveObstacle', { id: movingObstacleId, x, groundY }, result => {
+        if (!result?.ok) toast(result?.error || 'Nem sikerült áthelyezni.');
+        else { movingObstacleId = null; toast(`↔️ Tárgy áthelyezve. −12 arany. Maradt: ${result.gold}`); updateBuildControls(); }
+      });
+      return;
+    }
+
+    if (['shield', 'lifebuoy', 'jumpboots'].includes(selectedBuildType)) return toast('Ezt a segítséget a boltban a vásárlás gombbal aktiválhatod.');
     const type = selectedBuildType;
     const placementError = getBuildPlacementError(type, x, groundY);
     if (placementError) return toast(placementError);
@@ -391,46 +431,88 @@ function updateScoreList() {
 function updateChat() {
   const el = $('chatMessages'); if (!el || !roomState) return;
   const messages = roomState.chat || [];
-  el.innerHTML = messages.slice(-40).map(m=>`<div class="chat-line ${m.system?'system':''}"><span class="chat-name">${escapeHtml(m.name)}:</span> ${escapeHtml(m.text)}</div>`).join('');
+  el.innerHTML = messages.slice(-40).map(m => {
+    const kind = m.kind === 'first-place' ? ' first-place' : (m.kind === 'finish' ? ' finish-event' : '');
+    return `<div class="chat-line ${m.system ? 'system' : ''}${kind}"><span class="chat-name">${escapeHtml(m.name)}:</span> ${escapeHtml(m.text)}</div>`;
+  }).join('');
   el.scrollTop = el.scrollHeight;
 }
 function updateBuildControls() {
   const panel = $('buildPanel'); if (!panel || !roomState) return;
-  if (roomState.phase !== 'build') { panel.classList.add('hidden'); panel.innerHTML=''; return; }
+  if (roomState.phase !== 'build') { panel.classList.add('hidden'); panel.innerHTML=''; movingObstacleId = null; return; }
   panel.classList.remove('hidden');
   const me = getMe(); const isMe = roomState.currentBuilderId === socket.id;
   const builder = roomState.players.find(p => p.id === roomState.currentBuilderId);
-  if (!isMe) selectedBuildType = null;
+  if (!isMe) { selectedBuildType = null; movingObstacleId = null; }
   if (isMe && selectedBuildType) {
-    const selectedItem = ITEMS.find(item => item.type === selectedBuildType);
-    if (!selectedItem || (me?.gold ?? 0) < selectedItem.price) selectedBuildType = null;
+    const selectedItem = ITEMS.find(item => item.type === selectedBuildType) || EDIT_TOOLS.find(item => item.type === selectedBuildType);
+    if (!selectedItem || (me?.gold ?? 0) < selectedItem.price) { selectedBuildType = null; movingObstacleId = null; }
   }
   const cards = ITEMS.map(item => `<button type="button" class="shop-item ${selectedBuildType===item.type?'selected':''}" data-item="${item.type}" ${!isMe || (me?.gold ?? 0) < item.price ? 'disabled' : ''}><span class="shop-icon">${item.icon}</span><strong>${item.name}</strong><small>🪙 ${item.price}</small><span class="item-desc">${item.desc}</span></button>`).join('');
-  const affordable = ITEMS.some(item => (me?.gold ?? 0) >= item.price);
-  panel.innerHTML = `<div class="build-top"><div><h3>🔨 Építkezési fázis</h3><p>${isMe ? `Aranyad: ${me?.gold ?? 0} · Több tárgyat is lerakhatsz a saját időd alatt.` : `Most ${escapeHtml(builder?.name || 'egy játékos')} építkezik.`}</p></div><span class="build-turn-pill">${isMe?'TE JÖSSZ':'VÁRJ A SORODRA'}</span></div><div class="shop-grid">${cards}</div><div class="build-footer"><span class="build-help">Válaszd ki az ikont, majd kattints a pályára. Tárgyakat és pajzsot is vehetsz, amíg tart az időd és van aranyad.${isMe && !affordable ? ' Nincs elég aranyad új tárgyra — kihagyhatod a körödet.' : ''}</span>${isMe?'<button class="ghost-button" id="skipBuildBtn">Kész / Kihagyom →</button>':''}</div>`;
+  const editCards = EDIT_TOOLS.map(item => `<button type="button" class="shop-item edit-tool ${selectedBuildType===item.type?'selected':''}" data-item="${item.type}" ${!isMe || (me?.gold ?? 0) < item.price ? 'disabled' : ''}><span class="shop-icon">${item.icon}</span><strong>${item.name}</strong><small>🪙 ${item.price}/művelet</small><span class="item-desc">${item.desc}</span></button>`).join('');
+  const affordable = ITEMS.some(item => (me?.gold ?? 0) >= item.price) || EDIT_TOOLS.some(item => (me?.gold ?? 0) >= item.price);
+  let helpText = 'Válassz tárgyat, majd kattints a pályára. Törlésnél kattints a tárgyra; mozgatásnál először válaszd ki a tárgyat, majd az új helyét.';
+  if (selectedBuildType === 'move-tool' && movingObstacleId) helpText = 'Áthelyezés: kattints a pálya új pontjára. A célzónák és más tárgyak nem fedhetők le.';
+  else if (selectedBuildType === 'delete-tool') helpText = 'Törlés: kattints bármelyik pályatárgyra. A törlés 8 aranyba kerül.';
+  else if (isMe && !affordable) helpText += ' Nincs elég aranyad új műveletre — kihagyhatod a körödet.';
+  const obstacleIcons = { crate: '📦', saw: '⚙️', spikes: '🔺', spring: '🌀', barrel: '🛢️' };
+  const obstacleNames = { crate: 'Láda', saw: 'Forgó fűrész', spikes: 'Tüskék', spring: 'Rugós kilövő', barrel: 'Hordó' };
+  const existingObstacleRows = (roomState.obstacles || []).map(o => `<div class="obstacle-admin-row"><div class="obstacle-admin-info"><span class="obstacle-admin-icon">${obstacleIcons[o.type] || '🧱'}</span><span><strong>${escapeHtml(obstacleNames[o.type] || 'Építmény')}</strong><small>${o.builtIn || o.ownerName === 'Pálya' ? 'Alap pályaelem' : `Építette: ${escapeHtml(o.ownerName || 'Játékos')}`} · X: ${Math.round(Number(o.x) || 0)}</small></span></div><button type="button" class="obstacle-delete-button" data-delete-obstacle="${escapeHtml(o.id)}" ${!isMe || (me?.gold ?? 0) < 8 ? 'disabled' : ''} title="Tárgy törlése 8 aranyért">🗑️ Törlés · 8🪙</button></div>`).join('');
+  panel.innerHTML = `<div class="build-top"><div><h3>🔨 Építkezési fázis</h3><p>${isMe ? `Aranyad: ${me?.gold ?? 0} · A saját időd alatt több tárgyat is elhelyezhetsz vagy módosíthatsz.` : `Most ${escapeHtml(builder?.name || 'egy játékos')} építkezik.`}</p></div><span class="build-turn-pill">${isMe?'TE JÖSSZ':'VÁRJ A SORODRA'}</span></div><div class="shop-grid">${cards}</div><div class="edit-tools-block"><h4>🛠️ Tárgyak kezelése</h4><div class="shop-grid edit-tool-grid">${editCards}</div></div><div class="obstacle-admin"><div class="obstacle-admin-heading"><h4>📋 Pályán lévő tárgyak</h4><small>${(roomState.obstacles || []).length} db · törlés 8 arany/tárgy</small></div><div class="obstacle-admin-list">${existingObstacleRows || '<div class="obstacle-admin-empty">Nincs lerakott tárgy.</div>'}</div></div><div class="build-footer"><span class="build-help">${escapeHtml(helpText)}</span>${isMe?'<button class="ghost-button" id="skipBuildBtn">Kész / Kihagyom →</button>':''}</div>`;
+  panel.querySelectorAll('[data-delete-obstacle]').forEach(btn => btn.addEventListener('click', () => {
+    if (!isMe) return toast('Most nem te építkezel.');
+    const id = btn.dataset.deleteObstacle;
+    if ((getMe()?.gold ?? 0) < 8) return toast('A tárgy törlése 8 aranyba kerül.');
+    selectedBuildType = null; movingObstacleId = null;
+    socket.emit('deleteObstacle', { id }, result => {
+      if (!result?.ok) toast(result?.error || 'Nem sikerült törölni a tárgyat.');
+      else { toast(`🗑️ Tárgy törölve. −${result.cost || 8} arany. Maradt: ${result.gold}`); updateBuildControls(); }
+    });
+  }));
   panel.querySelectorAll('[data-item]').forEach(btn => btn.addEventListener('click', () => {
     const type = btn.dataset.item;
+    if (EDIT_TOOLS.some(item => item.type === type)) {
+      selectedBuildType = type; movingObstacleId = null; updateBuildControls();
+      toast(type === 'delete-tool' ? 'Törlés kiválasztva: kattints bármelyik pályatárgyra.' : 'Mozgatás kiválasztva: kattints bármelyik pályatárgyra.');
+      return;
+    }
     if (['shield', 'lifebuoy', 'jumpboots'].includes(type)) {
-      selectedBuildType = null;
+      selectedBuildType = null; movingObstacleId = null;
       const labels = { shield: 'Pajzs megvéve!', lifebuoy: 'Mentőöv megvéve! Egy leesést túlélhetsz.', jumpboots: 'Ugrócsizma megvéve! A következő W-ugrásod magasabb lesz.' };
       socket.emit('placeBuild', { type }, result => { if (!result?.ok) toast(result?.error || 'Nem sikerült megvenni.'); else toast(labels[type] || 'Segítség megvéve.'); });
-    } else { selectedBuildType = type; updateBuildControls(); toast('Az akadály előnézete követi az egeret. Kattints oda, ahová építeni szeretnél.'); }
+    } else { selectedBuildType = type; movingObstacleId = null; updateBuildControls(); toast('Az akadály előnézete követi az egeret. Kattints oda, ahová építeni szeretnél.'); }
   }));
   if ($('skipBuildBtn')) $('skipBuildBtn').addEventListener('click', () => emitAck('skipBuild', {}, 'Építkezés befejezve.'));
 }
 
-const CANVAS_W = 1100, CANVAS_H = 620, GROUND_Y = 430, PLAYER_H = 42, PLAYER_HALF_W = 11;
-// A compact protected rectangle around the finish flag, mirrored by the server.
+const CANVAS_W = 1100, CANVAS_H = 620, GROUND_Y = 430, PLAYER_H = 40, PLAYER_HALF_W = 10;
+// Build-protected rectangles around both the starting field and the finish flag.
+const SPAWN_SAFE_ZONE = { left: 0, right: 260, top: 315, bottom: 440 };
 const GOAL_SAFE_ZONE = { left: 948, right: 1098, top: 250, bottom: 422 };
 function rectanglesOverlap(a, b, gap = 0) {
   return a.left < b.right + gap && a.right > b.left - gap && a.top < b.bottom + gap && a.bottom > b.top - gap;
 }
-function getBuildPlacementError(type, x, groundY) {
+function getBuildPlacementError(type, x, groundY, ignoreObstacleId = null) {
   const candidate = getObstacleBounds({ type, x, groundY });
+  if (rectanglesOverlap(candidate, SPAWN_SAFE_ZONE)) return 'A rajt körüli védett mezőt szabadon kell hagyni!';
   if (rectanglesOverlap(candidate, GOAL_SAFE_ZONE)) return 'A zászló körüli védett négyzetet szabadon kell hagyni!';
-  const other = (roomState?.obstacles || []).find(o => rectanglesOverlap(candidate, getObstacleBounds(o), 1));
+  const other = (roomState?.obstacles || []).find(o => o.id !== ignoreObstacleId && rectanglesOverlap(candidate, getObstacleBounds(o), 1));
   if (other) return 'Itt már van egy tárgy — ne rakd egymásra az építményeket!';
   return '';
+}
+function findObstacleAt(x, y) {
+  // Larger click zone than the physics box makes small traps much easier to select.
+  const hits = [];
+  for (const o of [...(roomState?.obstacles || [])].reverse()) {
+    const b = getObstacleBounds(o), padX = 12, padY = 12;
+    if (x < b.left - padX || x > b.right + padX || y < b.top - padY || y > b.bottom + padY) continue;
+    const cx = (b.left + b.right) / 2, cy = (b.top + b.bottom) / 2;
+    const dx = (x - cx) / Math.max(1, (b.right - b.left) / 2 + padX);
+    const dy = (y - cy) / Math.max(1, (b.bottom - b.top) / 2 + padY);
+    hits.push({ obstacle: o, distance: dx * dx + dy * dy });
+  }
+  hits.sort((a, b) => a.distance - b.distance);
+  return hits[0]?.obstacle || null;
 }
 const PLATFORM_LAYOUTS = {
   meadow: [
@@ -532,10 +614,14 @@ function physicsStep(dt, now) {
   // frame can't randomly eat the jump input on slower machines.
   if (jumpQueuedUntil && now > jumpQueuedUntil) jumpQueuedUntil = 0;
   if (jumpQueuedUntil && (motion.grounded || now <= motion.coyoteUntil)) {
-    // Holding W gives the existing full-height jump; a quick tap makes a lower hop.
+    // Begin with a small hop. Holding W adds upward force for a bounded time;
+    // releasing early stops the boost and produces a short hop.
     const me = getMe();
     const hasJumpBoots = !jumpBoostActiveThisJump && (Number(me?.jumpBoosts) || 0) > 0;
-    motion.vy = hasJumpBoots ? (jumpHeld ? JUMP_FULL_POWER * 1.27 : JUMP_TAP_POWER * 1.2) : (jumpHeld ? JUMP_FULL_POWER : JUMP_TAP_POWER);
+    motion.vy = hasJumpBoots ? JUMP_START_POWER * 1.18 : JUMP_START_POWER;
+    activeJumpHoldForce = hasJumpBoots ? JUMP_HOLD_FORCE * 1.12 : JUMP_HOLD_FORCE;
+    activeJumpMaxPower = hasJumpBoots ? JUMP_FULL_POWER * 1.12 : JUMP_FULL_POWER;
+    jumpHoldElapsed = 0;
     if (hasJumpBoots) { jumpBoostActiveThisJump = true; socket.emit('useJumpBoost', {}, result => { if (!result?.ok) pushLocalMessage(result.error || 'Az ugrócsizma nem aktiválható.'); }); }
     motion.grounded = false;
     motion.jumping = true;
@@ -550,7 +636,7 @@ function physicsStep(dt, now) {
   let nextX = motion.x;
   if (left !== right) {
     motion.face = right ? 1 : -1;
-    nextX += (right ? 245 : -245) * dt;
+    nextX += (right ? 155 : -155) * dt;
   }
   nextX = Math.max(PLAYER_HALF_W + 2, Math.min(CANVAS_W - PLAYER_HALF_W - 5, nextX));
 
@@ -582,6 +668,11 @@ function physicsStep(dt, now) {
     const previousFeet = feetY;
     const previousHead = previousFeet - PLAYER_H;
     motion.vy += 1500 * dt;
+    if (jumpHeld && jumpLaunchedByW && jumpHoldElapsed < JUMP_HOLD_MAX_SECONDS && motion.vy < 0) {
+      motion.vy -= activeJumpHoldForce * dt;
+      motion.vy = Math.max(motion.vy, activeJumpMaxPower);
+      jumpHoldElapsed += dt;
+    }
     feetY = previousFeet + motion.vy * dt;
     const currentHeadAfter = feetY - PLAYER_H;
     const surfaces = getSolidSurfaces();
@@ -599,6 +690,7 @@ function physicsStep(dt, now) {
         motion.vy = 0;
         motion.grounded = true;
         jumpLaunchedByW = false;
+        jumpHoldElapsed = 0; activeJumpHoldForce = JUMP_HOLD_FORCE; activeJumpMaxPower = JUMP_FULL_POWER;
         jumpBoostActiveThisJump = false;
         motion.coyoteUntil = now + COYOTE_TIME_MS;
       }
@@ -627,7 +719,7 @@ function physicsStep(dt, now) {
     motion.y = 0; motion.vy = 0; motion.grounded = true;
     motion.moving = false; motion.jumping = false; motion.coyoteUntil = 0;
     motion.pauseUntil = now + 170;
-    jumpQueuedUntil = 0; jumpLaunchedByW = false; jumpHeld = false; jumpBoostActiveThisJump = false;
+    jumpQueuedUntil = 0; jumpLaunchedByW = false; jumpHeld = false; jumpHoldElapsed = 0; activeJumpHoldForce = JUMP_HOLD_FORCE; activeJumpMaxPower = JUMP_FULL_POWER; jumpBoostActiveThisJump = false;
     socket.emit('fellOffCourse');
     pushLocalMessage('💦 Leestél a pályáról — visszakerültél a rajthoz!');
     return;
@@ -698,7 +790,12 @@ function drawWorld(now) {
   drawGoal(ctx, length, now);
   if (isBuild) {
     ctx.save();
-    ctx.fillStyle = '#ff536330'; ctx.fillRect(GOAL_SAFE_ZONE.left, GOAL_SAFE_ZONE.top, GOAL_SAFE_ZONE.right - GOAL_SAFE_ZONE.left, GOAL_SAFE_ZONE.bottom - GOAL_SAFE_ZONE.top);
+    ctx.fillStyle = '#35d88c40'; ctx.fillRect(SPAWN_SAFE_ZONE.left, SPAWN_SAFE_ZONE.top, SPAWN_SAFE_ZONE.right - SPAWN_SAFE_ZONE.left, SPAWN_SAFE_ZONE.bottom - SPAWN_SAFE_ZONE.top);
+    ctx.strokeStyle = '#48e5a0'; ctx.lineWidth = 3; ctx.setLineDash([6, 4]);
+    ctx.strokeRect(SPAWN_SAFE_ZONE.left, SPAWN_SAFE_ZONE.top, SPAWN_SAFE_ZONE.right - SPAWN_SAFE_ZONE.left, SPAWN_SAFE_ZONE.bottom - SPAWN_SAFE_ZONE.top);
+    ctx.setLineDash([]); ctx.fillStyle = '#104f3be8'; roundRect(ctx, SPAWN_SAFE_ZONE.left + 3, SPAWN_SAFE_ZONE.top - 26, 140, 22, 7); ctx.fill();
+    ctx.fillStyle = '#e1fff0'; ctx.font = 'bold 11px Nunito'; ctx.textAlign = 'left'; ctx.fillText('🛡️ RAJT – VÉDETT', SPAWN_SAFE_ZONE.left + 10, SPAWN_SAFE_ZONE.top - 11);
+    ctx.fillStyle = '#ff536340'; ctx.fillRect(GOAL_SAFE_ZONE.left, GOAL_SAFE_ZONE.top, GOAL_SAFE_ZONE.right - GOAL_SAFE_ZONE.left, GOAL_SAFE_ZONE.bottom - GOAL_SAFE_ZONE.top);
     ctx.strokeStyle = '#ff6b7d'; ctx.lineWidth = 2; ctx.setLineDash([6, 4]);
     ctx.strokeRect(GOAL_SAFE_ZONE.left, GOAL_SAFE_ZONE.top, GOAL_SAFE_ZONE.right - GOAL_SAFE_ZONE.left, GOAL_SAFE_ZONE.bottom - GOAL_SAFE_ZONE.top); ctx.setLineDash([]);
     ctx.fillStyle = '#552638e8'; roundRect(ctx, GOAL_SAFE_ZONE.left - 1, GOAL_SAFE_ZONE.top - 26, 145, 22, 7); ctx.fill();
@@ -729,23 +826,54 @@ function drawWorld(now) {
     }
     drawAnimal(ctx, drawP, now);
   }
-  if (isBuild && selectedBuildType && mouseWorld && selectedBuildType !== 'shield') {
+  if (isBuild && selectedBuildType && mouseWorld) {
     const px = Math.max(28, Math.min(length - 28, mouseWorld.x));
     const ground = Math.max(50, Math.min(600, mouseWorld.y + 20));
-    const placementError = getBuildPlacementError(selectedBuildType, px, ground);
-    const blocked = !!placementError;
     ctx.save();
-    ctx.globalAlpha = 0.72;
-    ctx.strokeStyle = blocked ? '#ff6177' : '#ffe16a'; ctx.lineWidth = 2; ctx.setLineDash([5, 5]);
-    ctx.beginPath(); ctx.moveTo(px, Math.max(15, ground - 60)); ctx.lineTo(px, Math.min(CANVAS_H - 8, ground + 8)); ctx.stroke(); ctx.setLineDash([]);
-    ctx.globalAlpha = 0.7;
-    drawObstacle(ctx, { type: selectedBuildType, x: px, groundY: ground }, now);
-    ctx.globalAlpha = 1;
-    ctx.strokeStyle = blocked ? '#ff6177' : '#5be89b'; ctx.lineWidth = 3;
-    ctx.beginPath(); ctx.ellipse(px, ground + 2, 29, 9, 0, 0, Math.PI * 2); ctx.stroke();
-    ctx.fillStyle = blocked ? '#651d31' : '#123d30'; roundRect(ctx, Math.max(4, Math.min(w - 135, px - 65)), Math.max(52, ground - 72), 130, 23, 8); ctx.fill();
-    ctx.fillStyle = blocked ? '#fff0f2' : '#ddffe9'; ctx.font = 'bold 11px Nunito'; ctx.textAlign = 'center';
-    ctx.fillText(blocked ? (placementError.includes('zászló') ? 'CÉLZÓNA – TILOS' : 'FOGLALT – TILOS') : 'IDE ÉPÜL', Math.max(68, Math.min(w - 68, px)), Math.max(67, ground - 57));
+    if (selectedBuildType === 'delete-tool') {
+      const target = findObstacleAt(mouseWorld.x, mouseWorld.y);
+      if (target) {
+        const b = getObstacleBounds(target); ctx.strokeStyle = '#ff6177'; ctx.lineWidth = 4;
+        ctx.strokeRect(b.left, b.top, b.right - b.left, b.bottom - b.top);
+        ctx.fillStyle = '#42192b'; roundRect(ctx, Math.max(4, Math.min(w - 130, target.x - 60)), Math.max(52, b.top - 29), 120, 22, 7); ctx.fill();
+        ctx.fillStyle = '#fff1f3'; ctx.font = 'bold 11px Nunito'; ctx.textAlign = 'center'; ctx.fillText('TÖRLÉS · 8 ARANY', Math.max(64, Math.min(w - 64, target.x)), Math.max(67, b.top - 15));
+      } else {
+        ctx.fillStyle = '#42192b'; roundRect(ctx, Math.max(4, Math.min(w - 144, px - 68)), Math.max(52, ground - 72), 136, 23, 8); ctx.fill();
+        ctx.fillStyle = '#fff1f3'; ctx.font = 'bold 11px Nunito'; ctx.textAlign = 'center'; ctx.fillText('VÁLASSZ TÁRGYAT', Math.max(72, Math.min(w - 72, px)), Math.max(67, ground - 57));
+      }
+    } else if (selectedBuildType === 'move-tool') {
+      if (!movingObstacleId) {
+        const target = findObstacleAt(mouseWorld.x, mouseWorld.y);
+        if (target) { const b = getObstacleBounds(target); ctx.strokeStyle = '#55d8ff'; ctx.lineWidth = 4; ctx.strokeRect(b.left, b.top, b.right-b.left, b.bottom-b.top); }
+        ctx.fillStyle = '#123247ee'; roundRect(ctx, Math.max(4, Math.min(w - 154, px - 73)), 52, 146, 23, 8); ctx.fill();
+        ctx.fillStyle = '#e1f8ff'; ctx.font = 'bold 11px Nunito'; ctx.textAlign = 'center'; ctx.fillText('VÁLASSZ TÁRGYAT', Math.max(77, Math.min(w - 77, px)), 67);
+      } else {
+        const original = roomState.obstacles.find(o => o.id === movingObstacleId);
+        if (original) {
+          const err = getBuildPlacementError(original.type, px, ground, movingObstacleId);
+          const blocked = !!err;
+          ctx.globalAlpha = .72; ctx.strokeStyle = blocked ? '#ff6177' : '#55d8ff'; ctx.lineWidth = 2; ctx.setLineDash([5,5]);
+          ctx.strokeRect(px-30, ground-60, 60, 60); ctx.setLineDash([]);
+          drawObstacle(ctx, { ...original, x: px, groundY: ground }, now); ctx.globalAlpha = 1;
+          ctx.fillStyle = blocked ? '#651d31' : '#123d50'; roundRect(ctx, Math.max(4, Math.min(w-148, px-70)), Math.max(52, ground-72), 140, 23, 8); ctx.fill();
+          ctx.fillStyle = '#fff'; ctx.font = 'bold 11px Nunito'; ctx.textAlign='center'; ctx.fillText(blocked ? 'IDE NEM TEHETŐ' : 'ÚJ HELY · 12 ARANY', Math.max(74, Math.min(w-74, px)), Math.max(67, ground-57));
+        }
+      }
+    } else if (['crate','saw','spikes','spring','barrel'].includes(selectedBuildType)) {
+      const placementError = getBuildPlacementError(selectedBuildType, px, ground);
+      const blocked = !!placementError;
+      ctx.globalAlpha = 0.72;
+      ctx.strokeStyle = blocked ? '#ff6177' : '#ffe16a'; ctx.lineWidth = 2; ctx.setLineDash([5, 5]);
+      ctx.beginPath(); ctx.moveTo(px, Math.max(15, ground - 60)); ctx.lineTo(px, Math.min(CANVAS_H - 8, ground + 8)); ctx.stroke(); ctx.setLineDash([]);
+      ctx.globalAlpha = 0.7;
+      drawObstacle(ctx, { type: selectedBuildType, x: px, groundY: ground }, now);
+      ctx.globalAlpha = 1;
+      ctx.strokeStyle = blocked ? '#ff6177' : '#5be89b'; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.ellipse(px, ground + 2, 29, 9, 0, 0, Math.PI * 2); ctx.stroke();
+      ctx.fillStyle = blocked ? '#651d31' : '#123d30'; roundRect(ctx, Math.max(4, Math.min(w - 135, px - 65)), Math.max(52, ground - 72), 130, 23, 8); ctx.fill();
+      ctx.fillStyle = blocked ? '#fff0f2' : '#ddffe9'; ctx.font = 'bold 11px Nunito'; ctx.textAlign = 'center';
+      ctx.fillText(blocked ? (placementError.includes('zászló') ? 'CÉLZÓNA – TILOS' : placementError.includes('rajt') ? 'RAJT – VÉDETT' : 'FOGLALT – TILOS') : 'IDE ÉPÜL', Math.max(68, Math.min(w - 68, px)), Math.max(67, ground - 57));
+    }
     ctx.restore();
   }
   if (!isBuild) {
@@ -859,7 +987,7 @@ function drawAnimalNameTag(ctx, p, x, base, bob) {
   const label = p.name || 'Játékos';
   const width = ctx.measureText(label).width;
   const tx = x - width / 2 - 8;
-  const ty = base - 58 + bob - (p.labelOffset || 0);
+  const ty = base - 68 + bob - (p.labelOffset || 0);
   ctx.fillStyle = p.id === socket.id ? '#153c54' : '#203752';
   roundRect(ctx, tx, ty, width + 16, 20, 7); ctx.fill();
   ctx.strokeStyle = p.id === socket.id ? '#ffe17c' : '#ffffffa0'; ctx.lineWidth = 1.5; ctx.stroke();
@@ -868,20 +996,20 @@ function drawAnimalNameTag(ctx, p, x, base, bob) {
 }
 function drawAnimal(ctx,p,now) {
   const type=ANIMALS[p.animal] ? p.animal : 'pig';
-  const bob=p.jumping ? -2.2 : (p.moving ? Math.abs(Math.sin(now/66))*2.0 : Math.sin(now/520+p.joinOrder)*.9);
+  const bob=p.jumping ? -2.2 : (p.moving ? Math.abs(Math.sin(now/92))*2.4 : Math.sin(now/520+p.joinOrder)*.9);
   const base=GROUND_Y+(p.y||0);
   const x=p.x;
   const sprite = ANIMAL_SPRITES[type];
   if (sprite && sprite.complete && sprite.naturalWidth >= 160) {
     ctx.save();
-    ctx.fillStyle = '#18465e42'; ctx.beginPath(); ctx.ellipse(x, base + 2, p.moving ? 10 : 11, 2.5, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#18465e42'; ctx.beginPath(); ctx.ellipse(x, base + 2, p.moving ? 13 : 14, 3, 0, 0, Math.PI * 2); ctx.fill();
     ctx.translate(x, base + bob);
     if (p.face < 0) ctx.scale(-1, 1);
     if (p.moving) ctx.rotate(Math.sin(now / 70) * .055);
-    const frame = p.moving ? (Math.floor(now / 104) % 2) : 0;
+    const frame = p.moving ? (Math.floor(now / 170) % 2) : 0;
     const squash = p.jumping ? 1.035 : (p.moving ? 0.96 + Math.abs(Math.sin(now / 72)) * 0.06 : 1);
     ctx.scale(1 / Math.sqrt(squash), squash);
-    ctx.drawImage(sprite, frame * 80, 0, 80, 80, -24, -47, 48, 48);
+    ctx.drawImage(sprite, frame * 80, 0, 80, 80, -30, -58, 60, 60);
     if ((p.shields || 0) > 0) {
       ctx.strokeStyle = '#8ee9ffbb'; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(0, -23, 18, 22, 0, 0, Math.PI * 2); ctx.stroke();
       ctx.fillStyle = '#b8f6ff'; ctx.font = 'bold 11px Nunito'; ctx.textAlign = 'center'; ctx.fillText('🛡', 0, -44);
@@ -968,13 +1096,12 @@ window.addEventListener('keyup', e => {
   keys[e.code] = false;
   if (e.code === 'KeyW') {
     jumpHeld = false;
-    // Release early to shorten the jump. Holding W keeps the existing maximum height.
-    if (jumpLaunchedByW && motion.vy < JUMP_TAP_POWER) motion.vy = JUMP_TAP_POWER;
+    // The upward hold force stops instantly on release; a quick tap remains a small hop.
     jumpLaunchedByW = false;
   }
   if (e.code === 'Tab') $('scoreOverlay')?.classList.add('hidden');
 });
-window.addEventListener('blur', () => { keys = Object.create(null); jumpQueuedUntil = 0; jumpHeld = false; jumpLaunchedByW = false; $('scoreOverlay')?.classList.add('hidden'); });
+window.addEventListener('blur', () => { keys = Object.create(null); jumpQueuedUntil = 0; jumpHeld = false; jumpLaunchedByW = false; jumpHoldElapsed = 0; $('scoreOverlay')?.classList.add('hidden'); });
 
 // Keep the timer fresh even in the lobby-to-game transitions.
 setInterval(() => { if (currentScreen === 'game' && roomState) updateGameChrome(); }, 250);

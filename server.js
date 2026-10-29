@@ -111,8 +111,8 @@ function emitPositions(room) {
     finishRank: p.finishRank, deaths: p.deaths
   })));
 }
-function pushChat(room, name, text, system = false) {
-  room.chat.push({ name, text: String(text).slice(0, 260), system, time: Date.now() });
+function pushChat(room, name, text, system = false, kind = '') {
+  room.chat.push({ name, text: String(text).slice(0, 260), system, kind, time: Date.now() });
   if (room.chat.length > 50) room.chat.splice(0, room.chat.length - 50);
   io.to(room.code).emit('chatUpdated', room.chat.slice(-40));
 }
@@ -210,12 +210,17 @@ function finishPlayer(room, player) {
   player.finished = true;
   player.finishRank = room.players.filter(p => p.finished).length;
   const rankIndex = player.finishRank - 1;
-  player.score += SCORE_BY_RANK[rankIndex] || 10;
-  player.gold += GOLD_BY_RANK[rankIndex] || 5;
+  const pointsReward = SCORE_BY_RANK[rankIndex] || 10;
+  const goldReward = GOLD_BY_RANK[rankIndex] || 5;
+  player.score += pointsReward;
+  player.gold += goldReward;
   player.x = room.settings.mapLength - 66;
   player.y = platformsForTheme(room.settings.mapTheme).slice(-1)[0].top - GROUND_Y;
   player.moving = false;
-  pushChat(room, 'RENDSZER', `🏁 ${player.name} beért a(z) ${player.finishRank}. helyen! +${SCORE_BY_RANK[rankIndex] || 10} pont.`, true);
+  const finishText = player.finishRank === 1
+    ? `🏆 ELSŐ HELYEZETT: ${player.name}! +${pointsReward} pont és +${goldReward} arany a célba érésért!`
+    : `🏁 ${player.name} célba ért a(z) ${player.finishRank}. helyen. Jutalom: +${pointsReward} pont, +${goldReward} arany.`;
+  pushChat(room, 'CÉLBA ÉRÉS', finishText, true, player.finishRank === 1 ? 'first-place' : 'finish');
   emitPositions(room); emitRoom(room);
   if (room.players.every(p => p.finished)) endRound(room, 'finished');
 }
@@ -564,7 +569,7 @@ function leaveRoom(socket) {
 
 server.listen(PORT, '0.0.0.0', () => {
   console.log('==========================================');
-  console.log('  ALLATKAOSZ 1.8 - online 2D versenyjatek');
+  console.log('  ALLATKAOSZ 1.9 - online 2D versenyjatek');
   console.log(`  Helyben: http://localhost:${PORT}`);
   console.log('  Helyi halozaton: http://A_SZERVER_GEP_IP_CIME:' + PORT);
   console.log('  Leallitas: CTRL+C');

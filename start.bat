@@ -6,7 +6,7 @@ color 0B
 
 echo.
 echo  ==============================================
-echo           ALLATKAOSZ 1.8 - INDÍTÁS
+echo           ALLATKAOSZ 1.9 - INDÍTÁS
 echo  ==============================================
 echo.
 
