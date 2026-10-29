@@ -1,5 +1,6 @@
 'use strict';
 const path = require('path');
+const fs = require('fs');
 const http = require('http');
 const express = require('express');
 const { Server } = require('socket.io');
@@ -7,45 +8,97 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: '*' } });
 const PORT = Number(process.env.PORT || 3000);
-const MAP_LENGTH = 1100;
+const MAP_LENGTH = 1250;
 const GROUND_Y = 430;
-const SPAWN_SAFE_ZONE = { left: 0, right: 260, top: 315, bottom: 440 };
-const GOAL_SAFE_ZONE = { left: 948, right: 1098, top: 250, bottom: 422 };
-const OBJECT_DELETE_COST = 8;
+const SPAWN_SAFE_ZONE = { left: 0, right: 280, top: 315, bottom: 440 };
+const GOAL_SAFE_ZONE = { left: 1090, right: 1249, top: 250, bottom: 422 };
+const OBJECT_DELETE_COST = 50;
 const OBJECT_DELETE_OTHER_COST = OBJECT_DELETE_COST * 2;
 const OBJECT_MOVE_COST = 12;
 const PLATFORM_LAYOUTS = {
   meadow: [
-    { x: 0, width: 290, top: 430 }, { x: 324, width: 128, top: 475 },
-    { x: 475, width: 166, top: 395 }, { x: 665, width: 142, top: 428 },
-    { x: 830, width: 116, top: 470 }, { x: 958, width: 142, top: 390 }
+    { x: 0, width: 310, top: 430 }, { x: 330, width: 135, top: 450 },
+    { x: 500, width: 155, top: 390 }, { x: 700, width: 145, top: 430 },
+    { x: 915, width: 125, top: 445 }, { x: MAP_LENGTH - 142, width: 142, top: 390 }
   ],
   moon: [
-    { x: 0, width: 290, top: 430 }, { x: 315, width: 130, top: 405 },
-    { x: 470, width: 160, top: 360 }, { x: 660, width: 145, top: 410 },
-    { x: 825, width: 120, top: 375 }, { x: 958, width: 142, top: 390 }
+    { x: 0, width: 310, top: 430 }, { x: 330, width: 135, top: 410 },
+    { x: 500, width: 155, top: 365 }, { x: 700, width: 145, top: 410 },
+    { x: 915, width: 125, top: 380 }, { x: MAP_LENGTH - 142, width: 142, top: 390 }
   ],
   mars: [
-    { x: 0, width: 300, top: 430 }, { x: 330, width: 135, top: 455 },
-    { x: 490, width: 150, top: 395 }, { x: 670, width: 140, top: 445 },
-    { x: 835, width: 115, top: 400 }, { x: 958, width: 142, top: 390 }
+    { x: 0, width: 310, top: 430 }, { x: 330, width: 135, top: 455 },
+    { x: 500, width: 155, top: 400 }, { x: 700, width: 145, top: 445 },
+    { x: 915, width: 125, top: 410 }, { x: MAP_LENGTH - 142, width: 142, top: 390 }
   ],
   city: [
-    { x: 0, width: 300, top: 430 }, { x: 320, width: 130, top: 450 },
-    { x: 472, width: 160, top: 385 }, { x: 660, width: 150, top: 420 },
-    { x: 838, width: 112, top: 365 }, { x: 958, width: 142, top: 390 }
+    { x: 0, width: 310, top: 430 }, { x: 330, width: 135, top: 445 },
+    { x: 500, width: 155, top: 385 }, { x: 700, width: 145, top: 420 },
+    { x: 915, width: 125, top: 370 }, { x: MAP_LENGTH - 142, width: 142, top: 390 }
   ]
 };
 function platformsForTheme(theme) { return PLATFORM_LAYOUTS[theme] || PLATFORM_LAYOUTS.meadow; }
+function generatePlatformLayout(theme = 'meadow') {
+  const base = platformsForTheme(theme);
+  const rand = (amount) => Math.round((Math.random() * 2 - 1) * amount);
+  const result = [];
+  for (let index = 0; index < base.length; index += 1) {
+    const platform = base[index];
+    if (index === 0) { result.push({ ...platform }); continue; }
+    if (index === base.length - 1) { result.push({ ...platform, x: MAP_LENGTH - platform.width }); continue; }
+    const width = Math.max(112, Math.min(176, platform.width + rand(16)));
+    const previous = result[result.length - 1];
+    const minimumX = previous.x + previous.width + 18;
+    const nextBaseX = base[index + 1].x;
+    const maximumX = Math.min(MAP_LENGTH - 235, nextBaseX - width - 22);
+    const proposedX = platform.x + rand(index === 1 ? 15 : 27);
+    const topVariation = rand(index === 2 ? 27 : 25);
+    const minTop = index === 2 ? 345 : 380;
+    const maxTop = index === 2 ? 425 : 472;
+    result.push({
+      x: Math.max(minimumX, Math.min(maximumX, proposedX)),
+      width,
+      top: Math.max(minTop, Math.min(maxTop, platform.top + topVariation))
+    });
+  }
+  return result;
+}
+function platformsForRoom(room) { return Array.isArray(room.platforms) && room.platforms.length ? room.platforms : platformsForTheme(room.settings.mapTheme); }
 app.use(express.static(path.join(__dirname, 'public')));
 app.get('/health', (_req, res) => res.json({ ok: true, game: 'AllatKáosz' }));
 
 const rooms = new Map();
+const CUP_DATA_PATH = path.join(__dirname, 'data', 'player_cups.json');
+function loadCupLedger() {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(CUP_DATA_PATH, 'utf8'));
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch { return {}; }
+}
+const cupLedger = loadCupLedger();
+function cupKey(name) { return cleanName(name).toLocaleLowerCase('hu-HU'); }
+function getCupCount(name) { return Math.max(0, Number(cupLedger[cupKey(name)]?.cups) || 0); }
+function saveCupLedger() {
+  try {
+    fs.mkdirSync(path.dirname(CUP_DATA_PATH), { recursive: true });
+    fs.writeFileSync(CUP_DATA_PATH, JSON.stringify(cupLedger, null, 2), 'utf8');
+  } catch (err) { console.error('A kupák mentése nem sikerült:', err.message); }
+}
+function awardCup(name) {
+  const key = cupKey(name);
+  const record = cupLedger[key] || { name: cleanName(name), cups: 0 };
+  record.name = cleanName(name);
+  record.cups = Math.max(0, Number(record.cups) || 0) + 1;
+  record.updatedAt = new Date().toISOString();
+  cupLedger[key] = record;
+  saveCupLedger();
+  return record.cups;
+}
 const ANIMALS = new Set(['pig', 'capybara', 'horse', 'penguin', 'raccoon']);
 const ITEMS = {
-  crate: { name: 'Csapdaláda', cost: 10 },
-  saw: { name: 'Forgó fűrész', cost: 25 },
-  spikes: { name: 'Tüskék', cost: 20 },
+  crate: { name: 'Fa láda', cost: 10 },
+  stairs: { name: 'Fa lépcső', cost: 18 },
+  spikecrate: { name: 'Váltakozó tüskés láda', cost: 28 },
   spring: { name: 'Rugós kilövő', cost: 30 },
   barrel: { name: 'Guruló hordó', cost: 25 },
   shield: { name: 'Pajzs', cost: 20 },
@@ -69,12 +122,26 @@ function makeCode() {
 }
 function clamp(n, min, max) { return Math.max(min, Math.min(max, n)); }
 function obstacleBounds(type, x, groundY) {
-  if (type === 'crate') return { left: x - 21, right: x + 21, top: groundY - 39, bottom: groundY };
-  if (type === 'saw') return { left: x - 25, right: x + 25, top: groundY - 47, bottom: groundY + 2 };
-  if (type === 'spikes') return { left: x - 27, right: x + 27, top: groundY - 30, bottom: groundY + 4 };
+  if (type === 'crate' || type === 'spikecrate') return { left: x - 25, right: x + 25, top: groundY - 43, bottom: groundY };
+  if (type === 'stairs') return { left: x - 34, right: x + 34, top: groundY - 42, bottom: groundY };
   if (type === 'spring') return { left: x - 26, right: x + 26, top: groundY - 40, bottom: groundY + 4 };
-  if (type === 'barrel') return { left: x - 23, right: x + 23, top: groundY - 37, bottom: groundY + 3 };
+  if (type === 'barrel') return { left: x - 22, right: x + 22, top: groundY - 36, bottom: groundY + 3 };
   return { left: x - 20, right: x + 20, top: groundY - 30, bottom: groundY + 3 };
+}
+function spikeCrateState(obstacle, time = Date.now()) {
+  const phase = ((time + (Number(obstacle.spikeOffset) || 0)) % 3000 + 3000) % 3000;
+  if (phase < 1000) return { side: 'left', extended: true, phase };
+  if (phase < 1500) return { side: 'left', extended: false, phase };
+  if (phase < 2500) return { side: 'right', extended: true, phase };
+  return { side: 'right', extended: false, phase };
+}
+function spikeCrateHazardBounds(obstacle, time = Date.now()) {
+  const state = spikeCrateState(obstacle, time);
+  if (!state.extended) return null;
+  const x = Number(obstacle.x) || 0, groundY = Number.isFinite(obstacle.groundY) ? obstacle.groundY : GROUND_Y;
+  return state.side === 'left'
+    ? { left: x - 43, right: x - 23, top: groundY - 29, bottom: groundY - 2 }
+    : { left: x + 23, right: x + 43, top: groundY - 29, bottom: groundY - 2 };
 }
 function overlapsRect(a, b, gap = 0) {
   return a.left < b.right + gap && a.right > b.left - gap && a.top < b.bottom + gap && a.bottom > b.top - gap;
@@ -88,13 +155,13 @@ function publicPlayer(p) {
   return {
     id: p.id, name: p.name, animal: p.animal, joinOrder: p.joinOrder, startX: p.startX,
     x: p.x, y: p.y, face: p.face, moving: p.moving, jumping: p.jumping,
-    score: p.score, gold: p.gold, shields: p.shields, lifebuoys: p.lifebuoys || 0, jumpBoosts: p.jumpBoosts || 0, finished: p.finished,
-    finishRank: p.finishRank, deaths: p.deaths, connected: p.connected
+    score: p.score, gold: p.gold, cups: getCupCount(p.name), shields: p.shields, lifebuoys: p.lifebuoys || 0, jumpBoosts: p.jumpBoosts || 0, finished: p.finished,
+    finishRank: p.finishRank, deaths: p.deaths, knockbackCount: p.knockbackCount || 0, connected: p.connected
   };
 }
 function publicRoom(room) {
   return {
-    code: room.code, hostId: room.hostId, settings: { ...room.settings },
+    code: room.code, hostId: room.hostId, settings: { ...room.settings }, platforms: platformsForRoom(room).map(p => ({ ...p })),
     phase: room.phase, roundNo: room.roundNo, players: room.players.map(publicPlayer),
     obstacles: room.obstacles.map(o => ({ ...o })), chat: room.chat.slice(-40),
     roundDeadline: room.roundDeadline, raceStartsAt: room.raceStartsAt, currentBuilderId: room.currentBuilderId,
@@ -108,8 +175,8 @@ function emitPositions(room) {
   io.to(room.code).emit('playersMoved', room.players.map(p => ({
     id: p.id, name: p.name, animal: p.animal, joinOrder: p.joinOrder, startX: p.startX,
     x: p.x, y: p.y, face: p.face, moving: p.moving, jumping: p.jumping,
-    score: p.score, gold: p.gold, shields: p.shields, lifebuoys: p.lifebuoys || 0, jumpBoosts: p.jumpBoosts || 0, finished: p.finished,
-    finishRank: p.finishRank, deaths: p.deaths
+    score: p.score, gold: p.gold, cups: getCupCount(p.name), shields: p.shields, lifebuoys: p.lifebuoys || 0, jumpBoosts: p.jumpBoosts || 0, finished: p.finished,
+    finishRank: p.finishRank, deaths: p.deaths, knockbackCount: p.knockbackCount || 0
   })));
 }
 function pushChat(room, name, text, system = false, kind = '') {
@@ -119,10 +186,11 @@ function pushChat(room, name, text, system = false, kind = '') {
 }
 function createPlayer(socket, payload) {
   const animal = ANIMALS.has(payload && payload.animal) ? payload.animal : 'pig';
+  const name = cleanName(payload && payload.name);
   return {
-    id: socket.id, name: cleanName(payload && payload.name), animal, joinOrder: nextJoinOrder++,
+    id: socket.id, name, animal, joinOrder: nextJoinOrder++,
     startX: 45, x: 45, y: 0, face: 1, moving: false, jumping: false,
-    score: 0, gold: 100, shields: 0, lifebuoys: 0, jumpBoosts: 0, finished: false, finishRank: null, deaths: 0,
+    score: 0, gold: 100, cups: getCupCount(name), shields: 0, lifebuoys: 0, jumpBoosts: 0, finished: false, finishRank: null, deaths: 0, knockbackCount: 0,
     connected: true, maxMilestonePaid: 0, hitCooldownUntil: 0
   };
 }
@@ -157,21 +225,25 @@ function resetPlayerForRace(p, index = 0) {
 function platformAtX(x, padding = 24, theme = 'meadow') {
   return platformsForTheme(theme).find(p => x >= p.x + padding && x <= p.x + p.width - padding) || null;
 }
-function defaultObstacles(theme = 'meadow') {
-  // A few starter hazards are placed on reachable platforms for each world.
-  const ps = platformsForTheme(theme);
+function defaultObstacles(platforms) {
+  // Each new game gets a fresh layout. These starter objects are placed on real platforms.
+  const ps = Array.isArray(platforms) ? platforms : platformsForTheme('meadow');
   const placeOn = (index, offset = 0) => ({ x: Math.round(ps[index].x + ps[index].width / 2 + offset), groundY: ps[index].top });
   return [
-    { id: 'course-crate', type: 'crate', ...placeOn(1), ownerId: null, ownerName: 'Pálya', createdRound: 0, builtIn: true },
-    { id: 'course-spikes', type: 'spikes', ...placeOn(2, 14), ownerId: null, ownerName: 'Pálya', createdRound: 0, builtIn: true },
-    { id: 'course-saw', type: 'saw', ...placeOn(4), ownerId: null, ownerName: 'Pálya', createdRound: 0, builtIn: true }
+    { id: 'course-crate', type: 'crate', ...placeOn(1, 8), ownerId: null, ownerName: 'Pálya', createdRound: 0, builtIn: true },
+    { id: 'course-spikecrate', type: 'spikecrate', ...placeOn(2, -28), spikeOffset: Math.floor(Math.random() * 3000), ownerId: null, ownerName: 'Pálya', createdRound: 0, builtIn: true },
+    { id: 'course-barrel', type: 'barrel', ...placeOn(3, 12), ownerId: null, ownerName: 'Pálya', createdRound: 0, builtIn: true },
+    { id: 'course-stairs', type: 'stairs', ...placeOn(4, -8), ownerId: null, ownerName: 'Pálya', createdRound: 0, builtIn: true }
   ];
 }
 function startNewGame(room) {
   clearRoomTimer(room);
-  room.roundNo = 0; room.obstacles = defaultObstacles(room.settings.mapTheme); room.lastResults = []; room.winnerId = null; room.raceStartsAt = null;
+  room.roundNo = 0;
+  room.platforms = generatePlatformLayout(room.settings.mapTheme);
+  room.obstacles = defaultObstacles(room.platforms);
+  room.lastResults = []; room.winnerId = null; room.raceStartsAt = null; room.cupAwarded = false;
   room.players.forEach(p => {
-    p.score = 0; p.gold = room.settings.startGold; p.shields = 0; p.lifebuoys = 0; p.jumpBoosts = 0; p.deaths = 0; p.maxMilestonePaid = 0;
+    p.score = 0; p.gold = room.settings.startGold; p.shields = 0; p.lifebuoys = 0; p.jumpBoosts = 0; p.deaths = 0; p.knockbackCount = 0; p.maxMilestonePaid = 0;
   });
   pushChat(room, 'RENDSZER', 'Új verseny indul! Építsetek okosan, és jussatok el a zászlóhoz.', true);
   startRound(room);
@@ -216,7 +288,7 @@ function finishPlayer(room, player) {
   player.score += pointsReward;
   player.gold += goldReward;
   player.x = room.settings.mapLength - 66;
-  player.y = platformsForTheme(room.settings.mapTheme).slice(-1)[0].top - GROUND_Y;
+  player.y = platformsForRoom(room).slice(-1)[0].top - GROUND_Y;
   player.moving = false;
   const finishText = player.finishRank === 1
     ? `🏆 ELSŐ HELYEZETT: ${player.name}! +${pointsReward} pont és +${goldReward} arany a célba érésért!`
@@ -228,13 +300,22 @@ function finishPlayer(room, player) {
 function endRound(room, reason) {
   if (room.phase !== 'race') return;
   clearRoomTimer(room);
-  room.phase = 'build'; room.roundDeadline = null; room.raceStartsAt = null;
-  room.lastResults = [...room.players].sort((a, b) => {
+  room.roundDeadline = null; room.raceStartsAt = null;
+  room.lastRoundResults = [...room.players].sort((a, b) => {
     if (a.finished !== b.finished) return a.finished ? -1 : 1;
     return (a.finishRank || 99) - (b.finishRank || 99) || b.x - a.x;
   }).map((p, i) => ({ id: p.id, name: p.name, animal: p.animal, finished: p.finished, finishRank: p.finishRank, x: p.x, gold: p.gold, score: p.score, roundPlace: p.finished ? p.finishRank : null }));
+
+  // The final (e.g. 5/5) round ends directly on the results screen; nobody gets a pointless last build turn.
+  if (room.roundNo >= room.settings.rounds) {
+    room.statusMessage = reason === 'finished' ? '🏁 Az utolsó kör véget ért! Eredményhirdetés következik.' : '⏱️ Lejárt az idő az utolsó körben! Eredményhirdetés következik.';
+    pushChat(room, 'RENDSZER', room.statusMessage, true);
+    endGame(room);
+    return;
+  }
+
+  room.phase = 'build';
   room.statusMessage = reason === 'finished' ? 'Mindenki célba ért! Építkezési fázis következik.' : 'Lejárt az idő! Aki nem ért célba, erre a körre nem kap célba érési pontot.';
-  // Fair one-by-one build order, rotating the first player every round.
   const ordered = [...room.players].sort((a, b) => a.joinOrder - b.joinOrder);
   if (ordered.length) {
     const rotate = (room.roundNo - 1) % ordered.length;
@@ -270,11 +351,19 @@ function beginBuildTurn(room) {
   }, turnSeconds * 1000);
 }
 function endGame(room) {
+  if (room.phase === 'ended') return;
   clearRoomTimer(room);
-  room.phase = 'ended'; room.roundDeadline = null; room.raceStartsAt = null; room.currentBuilderId = null; room.buildTurnEndsAt = null;
   const sorted = [...room.players].sort((a, b) => b.score - a.score || b.gold - a.gold);
   room.winnerId = sorted[0] ? sorted[0].id : null;
-  room.lastResults = sorted.map((p, i) => ({ id: p.id, name: p.name, animal: p.animal, score: p.score, gold: p.gold, finalPlace: i + 1, finished: p.finished }));
+  if (sorted[0] && !room.cupAwarded) {
+    const winner = sorted[0];
+    const newCupCount = awardCup(winner.name);
+    room.cupAwarded = true;
+    room.players.forEach(p => { p.cups = getCupCount(p.name); });
+    pushChat(room, 'KUPA', `🏆 ${winner.name} megnyerte a versenyt és kapott 1 kupát! Összesen: ${newCupCount} kupa.`, true, 'cup');
+  }
+  room.phase = 'ended'; room.roundDeadline = null; room.raceStartsAt = null; room.currentBuilderId = null; room.buildTurnEndsAt = null;
+  room.lastResults = sorted.map((p, i) => ({ id: p.id, name: p.name, animal: p.animal, score: p.score, gold: p.gold, cups: getCupCount(p.name), finalPlace: i + 1, finished: p.finished }));
   room.statusMessage = sorted[0] ? `🏆 ${sorted[0].name} lett a verseny győztese!` : 'A verseny véget ért.';
   pushChat(room, 'RENDSZER', room.statusMessage, true);
   emitRoom(room);
@@ -293,9 +382,9 @@ io.on('connection', socket => {
     player.gold = settings.startGold;
     const room = {
       code, hostId: socket.id, settings, players: [player], phase: 'lobby', roundNo: 0,
-      obstacles: [], chat: [], roundDeadline: null, raceStartsAt: null, timer: null,
+      platforms: generatePlatformLayout(settings.mapTheme), obstacles: [], chat: [], roundDeadline: null, raceStartsAt: null, timer: null,
       currentBuilderId: null, buildQueue: [], buildIndex: 0, buildTurnEndsAt: null,
-      lastResults: [], winnerId: null, statusMessage: 'Várjuk a játékosokat!'
+      lastResults: [], winnerId: null, cupAwarded: false, statusMessage: 'Várjuk a játékosokat!'
     };
     rooms.set(code, room); socket.join(code); socket.data.roomCode = code;
     pushChat(room, 'RENDSZER', `${player.name} létrehozta a szobát.`, true);
@@ -320,6 +409,7 @@ io.on('connection', socket => {
     const player = getPlayer(room, socket.id); if (!player) return ack({ ok: false, error: 'Játékos nem található.' });
     if (room.phase !== 'lobby') return ack({ ok: false, error: 'Játék közben most nem változtatható.' });
     player.name = cleanName(payload.name);
+    player.cups = getCupCount(player.name);
     if (ANIMALS.has(payload.animal)) player.animal = payload.animal;
     ack({ ok: true }); emitRoom(room);
   });
@@ -329,6 +419,7 @@ io.on('connection', socket => {
     if (room.hostId !== socket.id) return ack({ ok: false, error: 'Csak a szobagazda állíthatja a beállításokat.' });
     if (room.phase !== 'lobby') return ack({ ok: false, error: 'A játék már elindult.' });
     room.settings = normalizeSettings(payload, room.players.length);
+    room.platforms = generatePlatformLayout(room.settings.mapTheme);
     room.players.forEach(p => { if (p.gold === room.settings.startGold || p.score === 0) p.gold = room.settings.startGold; });
     emitRoom(room); ack({ ok: true });
   });
@@ -355,7 +446,7 @@ io.on('connection', socket => {
       p.gold += (milestone - p.maxMilestonePaid) * 4;
       p.maxMilestonePaid = milestone;
     }
-    const goalTop = platformsForTheme(room.settings.mapTheme).slice(-1)[0].top;
+    const goalTop = platformsForRoom(room).slice(-1)[0].top;
     // The flag only counts when the player has actually landed on its platform,
     // not merely when they pass the x coordinate while falling or jumping below it.
     if (p.x >= room.settings.mapLength - 90 && Math.abs((GROUND_Y + p.y) - goalTop) <= 32) finishPlayer(room, p);
@@ -368,7 +459,7 @@ io.on('connection', socket => {
     // The optional lifebuoy rescues one fall and returns the player to the last platform.
     if ((p.lifebuoys || 0) > 0) {
       p.lifebuoys -= 1;
-      const platforms = platformsForTheme(room.settings.mapTheme);
+      const platforms = platformsForRoom(room);
       const lastPlatform = [...platforms].reverse().find(surface => surface.x < p.x - 10) || platforms[0];
       p.x = clamp(p.x - 45, lastPlatform.x + 14, lastPlatform.x + lastPlatform.width - 14);
       p.y = lastPlatform.top - GROUND_Y;
@@ -401,31 +492,32 @@ io.on('connection', socket => {
     if (!p || p.finished) return ack({ ok: false, error: 'Ez a játékos már nem versenyez.' });
     if (Date.now() < p.hitCooldownUntil) return ack({ ok: false, error: 'A csapda még nem aktiválható újra.' });
     const obstacle = room.obstacles.find(o => o.id === payload.id);
-    if (!obstacle || obstacle.type === 'crate' || Math.abs(p.x - obstacle.x) > 82) return ack({ ok: false, error: 'A csapdaérintés nem érvényes.' });
+    if (!obstacle || ['crate', 'stairs'].includes(obstacle.type) || Math.abs(p.x - obstacle.x) > 90) return ack({ ok: false, error: 'A csapdaérintés nem érvényes.' });
     const obstacleGround = Number.isFinite(obstacle.groundY) ? obstacle.groundY : GROUND_Y;
     const playerFeet = GROUND_Y + p.y;
     const playerTop = playerFeet - 42;
-    // Position packets arrive slightly after collision due to network latency.
-    // Use each sprite's actual rectangle with a small network tolerance instead
-    // of requiring exact feet-to-object alignment.
-    const boxes = {
-      saw: { left: obstacle.x - 25, right: obstacle.x + 25, top: obstacleGround - 47, bottom: obstacleGround + 2 },
-      spikes: { left: obstacle.x - 27, right: obstacle.x + 27, top: obstacleGround - 30, bottom: obstacleGround + 4 },
-      spring: { left: obstacle.x - 26, right: obstacle.x + 26, top: obstacleGround - 40, bottom: obstacleGround + 4 },
-      barrel: { left: obstacle.x - 23, right: obstacle.x + 23, top: obstacleGround - 37, bottom: obstacleGround + 3 }
-    };
-    const b = boxes[obstacle.type];
-    if (!b || p.x + 11 < b.left - 14 || p.x - 11 > b.right + 14 || playerFeet + 2 < b.top - 54 || playerTop > b.bottom + 54) {
-      return ack({ ok: false, error: 'A karakter még nincs a csapda közelében.' });
+    let b = null;
+    if (obstacle.type === 'spikecrate') b = spikeCrateHazardBounds(obstacle, Date.now());
+    else if (obstacle.type === 'spring') b = { left: obstacle.x - 26, right: obstacle.x + 26, top: obstacleGround - 40, bottom: obstacleGround + 4 };
+    else if (obstacle.type === 'barrel') b = { left: obstacle.x - 22, right: obstacle.x + 22, top: obstacleGround - 36, bottom: obstacleGround + 3 };
+    else b = null;
+    if (!b || p.x + 13 < b.left - 16 || p.x - 13 > b.right + 16 || playerFeet + 2 < b.top - 24 || playerTop > b.bottom + 24) {
+      return ack({ ok: false, error: 'A csapda még nincs aktív oldalon / a karakter nincs a közelében.' });
     }
-    p.hitCooldownUntil = Date.now() + 850;
+    p.hitCooldownUntil = Date.now() + 900;
     let action = 'death';
     if (obstacle.type === 'spring') {
-      // The local client applies the spring impulse immediately. Keeping the
-      // server Y here avoids an authoritative snap that fights the jump arc.
       action = 'spring';
       p.jumping = true;
       pushChat(room, 'RENDSZER', `${p.name} felrepült a rugós kilövővel!`, true);
+    } else if (obstacle.type === 'barrel') {
+      // A barrel is a bump/knockback obstacle, never a lethal trap.
+      p.knockbackCount = (p.knockbackCount || 0) + 1;
+      p.x = clamp(p.x + (p.x <= obstacle.x ? -82 : 82), p.startX ?? 36, room.settings.mapLength - 40);
+      p.y = Math.min(p.y, -14);
+      p.moving = false; p.jumping = true;
+      action = 'knockback';
+      pushChat(room, 'RENDSZER', `🛢️ ${p.name} nekiment a hordónak, amely visszalökte! Egy pillanatra megtorpant.`, true);
     } else if (p.shields > 0) {
       p.shields -= 1;
       p.x = clamp(p.x - 62, p.startX ?? 36, room.settings.mapLength - 40);
@@ -435,10 +527,10 @@ io.on('connection', socket => {
     } else {
       p.deaths += 1; p.x = p.startX ?? 36; p.y = 0; p.moving = false; p.jumping = false;
       action = 'death';
-      pushChat(room, 'RENDSZER', `💥 ${p.name} belefutott egy csapdába, és visszakerült a rajthoz!`, true);
+      pushChat(room, 'RENDSZER', `💥 ${p.name} belefutott egy tüskés csapdába, és visszakerült a rajthoz!`, true);
     }
     emitPositions(room); emitRoom(room);
-    ack({ ok: true, action });
+    ack({ ok: true, action, x: p.x, y: p.y, knockbackCount: p.knockbackCount || 0 });
   });
 
   socket.on('placeBuild', (payload = {}, ack = () => {}) => {
@@ -473,7 +565,7 @@ io.on('connection', socket => {
       const collides = room.obstacles.some(o => overlapsRect(candidateBounds, obstacleBounds(o.type, Number(o.x) || 0, Number.isFinite(o.groundY) ? o.groundY : GROUND_Y), 1));
       if (collides) return ack({ ok: false, error: 'Itt már van egy tárgy — ne rakd egymásra az építményeket!' });
       p.gold -= item.cost;
-      room.obstacles.push({ id: `${room.roundNo}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, type, x, groundY, ownerId: p.id, ownerName: p.name, createdRound: room.roundNo });
+      room.obstacles.push({ id: `${room.roundNo}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, type, x, groundY, ...(type === 'spikecrate' ? { spikeOffset: Math.floor(Math.random() * 3000) } : {}), ownerId: p.id, ownerName: p.name, createdRound: room.roundNo });
       pushChat(room, 'RENDSZER', `🔨 ${p.name} épített egyet: ${item.name}.`, true);
     }
     // A builder stays active after every purchase/placement and may keep building
@@ -489,7 +581,7 @@ io.on('connection', socket => {
     const index = room.obstacles.findIndex(o => o.id === String(payload.id || ''));
     if (index < 0) return ack({ ok: false, error: 'A kiválasztott tárgy már nem található.' });
     const obstacle = room.obstacles[index];
-    // Your own object is cheaper to remove. Another player's object (and an original course obstacle) costs double.
+    // Saját objektum törlése 50 arany, más játékosé vagy pályaelemé 100 arany.
     const deleteCost = obstacle.ownerId === p.id ? OBJECT_DELETE_COST : OBJECT_DELETE_OTHER_COST;
     if (p.gold < deleteCost) return ack({ ok: false, error: `Ennek a tárgynak a törlése ${deleteCost} aranyba kerül.` });
     p.gold -= deleteCost;
@@ -572,7 +664,7 @@ function leaveRoom(socket) {
 
 server.listen(PORT, '0.0.0.0', () => {
   console.log('==========================================');
-  console.log('  ALLATKAOSZ 1.9 - online 2D versenyjatek');
+  console.log('  ALLATKAOSZ 1.13 - online 2D versenyjatek');
   console.log(`  Helyben: http://localhost:${PORT}`);
   console.log('  Helyi halozaton: http://A_SZERVER_GEP_IP_CIME:' + PORT);
   console.log('  Leallitas: CTRL+C');

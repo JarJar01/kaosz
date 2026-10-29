@@ -17,17 +17,17 @@ for (const animalType of Object.keys(ANIMALS)) {
 }
 const MAPS = { meadow: '🌳 Kezdő mező', moon: '🌙 Hold', mars: '🔴 Mars', city: '🌆 Város' };
 const ITEMS = [
-  { type: 'crate', name: 'Csapdaláda', icon: '📦', price: 10, desc: 'Ugorjátok át!' },
-  { type: 'saw', name: 'Forgó fűrész', icon: '⚙️', price: 25, desc: 'Halálos csapda' },
-  { type: 'spikes', name: 'Tüskék', icon: '🔺', price: 20, desc: 'Egy rossz lépés…' },
+  { type: 'crate', name: 'Fa láda', icon: '📦', price: 10, desc: 'Szilárd akadály, a tetejére fel lehet ugrani' },
+  { type: 'stairs', name: 'Fa lépcső', icon: '🪜', price: 18, desc: 'Három lépcsőfok, segít magasabb platformra jutni' },
+  { type: 'spikecrate', name: 'Váltakozó tüskés láda', icon: '🗡️', price: 28, desc: 'Felváltva bal és jobb oldalán döf ki, majd visszahúzódik' },
   { type: 'spring', name: 'Rugós kilövő', icon: '🌀', price: 30, desc: 'Magasra repít' },
-  { type: 'barrel', name: 'Guruló hordó', icon: '🛢️', price: 25, desc: 'Veszélyes akadály' },
-  { type: 'shield', name: 'Pajzs', icon: '🛡️', price: 20, desc: 'Egy csapdát kivéd' },
+  { type: 'barrel', name: 'Fahordó', icon: '🛢️', price: 25, desc: 'Nem öl meg: hátralök és rövid időre megállít' },
+  { type: 'shield', name: 'Pajzs', icon: '🛡️', price: 20, desc: 'Egy halálos csapdát kivéd' },
   { type: 'lifebuoy', name: 'Mentőöv', icon: '🛟', price: 30, desc: 'Egy leesést megúszol' },
   { type: 'jumpboots', name: 'Ugrócsizma', icon: '🥾', price: 35, desc: 'A következő ugrásod magasabb' }
 ];
 const EDIT_TOOLS = [
-  { type: 'delete-tool', name: 'Objektum törlése', icon: '🗑️', price: 8, desc: 'Saját 8, másé 16 arany' },
+  { type: 'delete-tool', name: 'Objektum törlése', icon: '🗑️', price: 50, desc: 'Saját tárgy 50, másé vagy pályaelem 100 arany' },
   { type: 'move-tool', name: 'Objektum mozgatása', icon: '↔️', price: 12, desc: 'Egy pályatárgy áthelyezése' }
 ];
 let roomState = null;
@@ -52,6 +52,8 @@ let lastHitAt = Object.create(null);
 let lastDeathCount = 0;
 let lastShieldCount = 0;
 let lastLifebuoyCount = 0;
+let lastKnockbackCount = 0;
+let cupIntroShowing = false;
 let lastChromeUpdate = 0;
 let jumpBoostActiveThisJump = false;
 let lastFallAt = 0;
@@ -88,6 +90,19 @@ function toast(message) {
   el.classList.add('show');
   clearTimeout(toastTimeout);
   toastTimeout = setTimeout(() => el.classList.remove('show'), 2800);
+}
+function showCupIntro(player) {
+  if (!player || cupIntroShowing) return;
+  cupIntroShowing = true;
+  document.querySelector('.cup-intro-overlay')?.remove();
+  const overlay = document.createElement('div');
+  overlay.className = 'cup-intro-overlay';
+  overlay.innerHTML = `<section class="cup-intro-card" role="dialog" aria-modal="true" aria-label="Kupaállás"><div class="cup-intro-spark">✦ ✦ ✦</div><div class="cup-intro-trophy">🏆</div><small>ÁLLATKÁOSZ · JÁTÉKOSPROFIL</small><h2>Üdv vissza, ${escapeHtml(player.name)}!</h2><div class="cup-intro-count"><strong>${Math.max(0, Number(player.cups) || 0)}</strong><span>kupád van</span></div><p>A kupáid a nevedhez vannak elmentve, így legközelebb is megmaradnak.</p><button type="button" class="primary-button" id="cupIntroClose">Mehetünk! 🐾</button></section>`;
+  document.body.appendChild(overlay);
+  const close = () => { overlay.classList.add('leaving'); setTimeout(() => overlay.remove(), 220); cupIntroShowing = false; };
+  overlay.querySelector('#cupIntroClose')?.addEventListener('click', close);
+  overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
+  setTimeout(() => { if (overlay.isConnected) close(); }, 5200);
 }
 function escapeHtml(value) {
   return String(value ?? '').replace(/[&<>"']/g, ch => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[ch]));
@@ -127,6 +142,7 @@ socket.on('roomState', next => {
   if (priorCode !== next.code) { selectedBuildType = null; movingObstacleId = null; }
   if (next.phase === 'lobby') {
     currentRenderedPhase = 'lobby'; renderLobby();
+    if (priorCode !== next.code) setTimeout(() => showCupIntro(getMe()), 100);
   } else if (next.phase === 'race' || next.phase === 'build') {
     const phaseChanged = currentScreen !== 'game' || currentRenderedPhase !== next.phase || priorCode !== next.code;
     if (phaseChanged) {
@@ -139,7 +155,7 @@ socket.on('roomState', next => {
       if (next.phase === 'race') {
         const me = next.players.find(p => p.id === socket.id);
         motion = { x: me?.x ?? me?.startX ?? 45, y: me?.y ?? 0, vy: 0, face: 1, moving: false, jumping: false, grounded: true, coyoteUntil: 0, pauseUntil: 0 };
-        lastDeathCount = me?.deaths ?? 0; lastShieldCount = me?.shields ?? 0; lastLifebuoyCount = me?.lifebuoys ?? 0;
+        lastDeathCount = me?.deaths ?? 0; lastShieldCount = me?.shields ?? 0; lastLifebuoyCount = me?.lifebuoys ?? 0; lastKnockbackCount = me?.knockbackCount ?? 0;
         lastFallAt = 0; lastSendAt = 0;
         jumpQueuedUntil = 0; jumpHeld = false; jumpLaunchedByW = false; jumpHoldElapsed = 0; activeJumpHoldForce = JUMP_HOLD_FORCE; activeJumpMaxPower = JUMP_FULL_POWER; jumpBoostActiveThisJump = false;
       }
@@ -168,21 +184,23 @@ socket.on('playersMoved', positions => {
     const deathCount = Number(me.deaths) || 0;
     const shieldCount = Number(me.shields) || 0;
     const lifebuoyCount = Number(me.lifebuoys) || 0;
+    const knockbackCount = Number(me.knockbackCount) || 0;
     const rescued = lifebuoyCount < lastLifebuoyCount;
     const respawned = deathCount > lastDeathCount || rescued;
     const shieldKnockback = shieldCount < lastShieldCount;
-    if (respawned || shieldKnockback) {
+    const barrelKnockback = knockbackCount > lastKnockbackCount;
+    if (respawned || shieldKnockback || barrelKnockback) {
       motion.x = Number.isFinite(Number(me.x)) ? Number(me.x) : (getMe()?.startX ?? 36);
       motion.y = Number.isFinite(Number(me.y)) ? Number(me.y) : 0;
-      motion.vy = shieldKnockback && !respawned ? -260 : 0;
+      motion.vy = barrelKnockback && !respawned ? -150 : (shieldKnockback && !respawned ? -260 : 0);
       motion.moving = false;
       motion.grounded = respawned ? true : false;
-      motion.jumping = shieldKnockback && !respawned;
+      motion.jumping = !respawned && (shieldKnockback || barrelKnockback);
       motion.coyoteUntil = 0;
-      motion.pauseUntil = performance.now() + (respawned ? 170 : 90);
+      motion.pauseUntil = performance.now() + (respawned ? 170 : (barrelKnockback ? 420 : 90));
       jumpQueuedUntil = 0; jumpLaunchedByW = false; jumpBoostActiveThisJump = false;
     }
-    lastDeathCount = deathCount; lastShieldCount = shieldCount; lastLifebuoyCount = lifebuoyCount;
+    lastDeathCount = deathCount; lastShieldCount = shieldCount; lastLifebuoyCount = lifebuoyCount; lastKnockbackCount = knockbackCount;
     if (me.finished) { motion.x = me.x; motion.y = me.y || 0; motion.vy = 0; motion.moving = false; motion.grounded = true; motion.jumping = false; }
   }
   updateScoreList();
@@ -233,7 +251,7 @@ function renderLobby() {
       <span class="animal-sprite-preview"><img src="/assets/animals/${key}.svg" alt="" loading="eager"></span><strong>${animal.label}</strong>
     </button>`).join('');
   const playerRows = players.map(p => `
-    <div class="player-row"><div class="player-avatar"><span class="animal-mini-sprite"><img src="/assets/animals/${ANIMALS[p.animal] ? p.animal : 'pig'}.svg" alt=""></span></div><div class="player-meta"><strong>${escapeHtml(p.name)} ${p.id === socket.id ? '<span class="muted">(Te)</span>' : ''}</strong><small>${ANIMALS[p.animal]?.label || 'Állat'} · ${p.connected ? 'Készen áll' : 'Kilépett'}</small></div>${p.id === roomState.hostId ? '<span class="host-tag">👑 GAZDA</span>' : ''}</div>`).join('');
+    <div class="player-row"><div class="player-avatar"><span class="animal-mini-sprite"><img src="/assets/animals/${ANIMALS[p.animal] ? p.animal : 'pig'}.svg" alt=""></span></div><div class="player-meta"><strong>${escapeHtml(p.name)} ${p.id === socket.id ? '<span class="muted">(Te)</span>' : ''}</strong><small>${ANIMALS[p.animal]?.label || 'Állat'} · 🏆 ${p.cups || 0} kupa · ${p.connected ? 'Készen áll' : 'Kilépett'}</small></div>${p.id === roomState.hostId ? '<span class="host-tag">👑 GAZDA</span>' : ''}</div>`).join('');
   const waitingRows = Array.from({ length: Math.max(0, s.maxPlayers - players.length) }, () => '<div class="player-row waiting-row"><div class="player-avatar">＋</div><div class="player-meta"><strong>Várjuk a játékost…</strong><small>Szobakóddal csatlakozhat</small></div></div>').join('');
   screenLobby.innerHTML = `
     <div class="lobby-heading"><div><h1>🐾 ÁllatKáosz — váróterem</h1><p>Válassz állatot, hívd be a barátaidat, és készítsétek elő a pályát!</p></div><div class="code-badge"><div><small>MEGHÍVÓKÓD</small><strong>${roomState.code}</strong></div><button id="copyCodeBtn" class="ghost-button">📋 Másolás</button></div></div>
@@ -290,7 +308,7 @@ function renderGame() {
   selectedBuildType = roomState.phase === 'build' && roomState.currentBuilderId === socket.id ? selectedBuildType : null;
   screenGame.innerHTML = `
     <div class="world-frame game-fullscreen-world">
-      <canvas id="worldCanvas" width="1100" height="620" tabindex="0" aria-label="ÁllatKáosz játékpálya. Mozgás: A/D vagy nyilak, ugrás: W"></canvas>
+      <canvas id="worldCanvas" width="1250" height="620" tabindex="0" aria-label="ÁllatKáosz játékpálya. Mozgás: A/D vagy nyilak, ugrás: W"></canvas>
       <header class="game-hud-top">
         <div class="game-hud-left">
           <div class="hud-brand"><span>🐾</span><strong>ÁLLAT<span>KÁOSZ</span></strong></div>
@@ -363,7 +381,7 @@ function renderGame() {
     if (selectedBuildType === 'delete-tool') {
       const target = findObstacleAt(rawX, rawY);
       if (!target) return toast('Kattints egy lerakott tárgyra a törléshez.');
-      const expectedCost = target.ownerId === socket.id ? 8 : 16;
+      const expectedCost = target.ownerId === socket.id ? 50 : 100;
       if ((getMe()?.gold ?? 0) < expectedCost) return toast(`Ennek a tárgynak a törlése ${expectedCost} aranyba kerül.`);
       socket.emit('deleteObstacle', { id: target.id }, result => {
         if (!result?.ok) toast(result?.error || 'Nem sikerült törölni.');
@@ -413,7 +431,7 @@ function renderEndScreen() {
   switchScreen('game'); screenGame.classList.add('end-screen'); currentRenderedPhase = 'ended';
   const sorted = roomState.lastResults || [];
   const winner = sorted[0];
-  screenGame.innerHTML = `<section class="panel end-layout"><div class="eyebrow">🏁 VERSENY VÉGE</div><h1>${winner ? `${ANIMALS[winner.animal]?.emoji || '🏆'} ${escapeHtml(winner.name)} nyert!` : 'Véget ért a verseny!'}</h1><p>A győztes az összes kör alatt szerzett pontok alapján dőlt el. Készen álltok a visszavágóra?</p><div class="results-list">${sorted.map((p,i)=>`<div class="result-row ${i===0?'winner':''}"><div class="result-place">${i+1}.</div><div class="result-animal">${ANIMALS[p.animal]?.emoji || '🐾'}</div><div class="result-details"><strong>${escapeHtml(p.name)} ${p.id===socket.id?'(Te)':''}</strong><small>🪙 ${p.gold} arany</small></div><div class="result-score">${p.score} pont</div></div>`).join('')}</div><div class="lobby-actions"><button class="ghost-button" id="endLeaveBtn">← Főmenü</button>${roomState.hostId===socket.id?'<button class="primary-button" id="restartGameBtn">🔄 Új verseny</button>':'<button class="primary-button" disabled>Várakozás a szobagazdára…</button>'}</div><p class="setting-note">A következő verseny ugyanazon a rövid pályán, új pontszámokkal indul; a szobabeállítások megmaradnak.</p></section>`;
+  screenGame.innerHTML = `<section class="panel end-layout"><div class="eyebrow">🏁 VERSENY VÉGE</div><h1>${winner ? `${ANIMALS[winner.animal]?.emoji || '🏆'} ${escapeHtml(winner.name)} nyert!` : 'Véget ért a verseny!'}</h1><p>A győztes az összes kör alatt szerzett pontok alapján dőlt el. A kupát a játékos nevéhez mentettük, ezért a következő belépésnél is megmarad.</p><div class="results-list">${sorted.map((p,i)=>`<div class="result-row ${i===0?'winner':''}"><div class="result-place">${i+1}.</div><div class="result-animal">${ANIMALS[p.animal]?.emoji || '🐾'}</div><div class="result-details"><strong>${escapeHtml(p.name)} ${p.id===socket.id?'(Te)':''}</strong><small>🪙 ${p.gold} arany · 🏆 ${p.cups || 0} kupa</small></div><div class="result-score">${p.score} pont</div></div>`).join('')}</div><div class="lobby-actions"><button class="ghost-button" id="endLeaveBtn">← Főmenü</button>${roomState.hostId===socket.id?'<button class="primary-button" id="restartGameBtn">🔄 Új verseny</button>':'<button class="primary-button" disabled>Várakozás a szobagazdára…</button>'}</div><p class="setting-note">A következő versenyen új, véletlenszerű platformelrendezés készül. Az utolsó kör után nincs plusz építkezési fázis.</p></section>`;
   $('endLeaveBtn').addEventListener('click', () => { socket.emit('leaveRoom'); roomState = null; livePlayers = []; currentRenderedPhase = null; switchScreen('home'); });
   if ($('restartGameBtn')) $('restartGameBtn').addEventListener('click', () => emitAck('startGame', {}, 'Új verseny indul!'));
 }
@@ -544,7 +562,7 @@ function updateBuildControls() {
   const affordable = ITEMS.some(item => (me?.gold ?? 0) >= item.price) || EDIT_TOOLS.some(item => (me?.gold ?? 0) >= item.price);
   let helpText = isMe ? 'Válassz ikont, majd kattints a pályára.' : `Várakozás: ${builder?.name || 'a játékos'} építkezik.`;
   if (selectedBuildType === 'move-tool' && movingObstacleId) helpText = 'Mozgatás: kattints az új helyre.';
-  else if (selectedBuildType === 'delete-tool') helpText = 'Törlés: saját tárgy 8, másé 16 arany. Kattints a tárgyra.';
+  else if (selectedBuildType === 'delete-tool') helpText = 'Törlés: saját tárgy 50, másé vagy pályaelem 100 arany. Kattints a tárgyra.';
   else if (isMe && !affordable) helpText = 'Nincs elég aranyad — kihagyhatod a körödet.';
 
   panel.innerHTML = `<div class="build-toolbar-head"><div class="build-toolbar-title"><strong>🔨 ${isMe ? 'ÉPÍTKEZÉS' : `${escapeHtml(builder?.name || 'Játékos')} ÉPÍTKEZIK`}</strong><span>${isMe ? `🪙 ${me?.gold ?? 0} arany · ${escapeHtml(helpText)}` : 'Várj, amíg rád kerül a sor.'}</span></div><div class="build-toolbar-actions"><span class="build-turn-pill">${isMe?'TE JÖSSZ':'VÁRAKOZÁS'}</span>${isMe?'<button class="ghost-button build-skip-button" id="skipBuildBtn" type="button">Kész / Kihagyom →</button>':''}</div></div><div class="build-toolbar-row"><div class="build-toolbar-items" aria-label="Építmények">${cards}</div><div class="build-toolbar-tools" aria-label="Tárgykezelő eszközök">${editCards}</div></div>`;
@@ -566,14 +584,14 @@ function updateBuildControls() {
   if ($('skipBuildBtn')) $('skipBuildBtn').addEventListener('click', () => emitAck('skipBuild', {}, 'Építkezés befejezve.'));
 }
 
-const CANVAS_W = 1100, CANVAS_H = 620, GROUND_Y = 430, PLAYER_H = 40, PLAYER_HALF_W = 10;
+const CANVAS_W = 1250, CANVAS_H = 620, GROUND_Y = 430, PLAYER_H = 40, PLAYER_HALF_W = 10;
 // No zoom changes between racing and building: pointer and rendered coordinates stay 1:1.
 function screenToWorld(clientX, clientY, rect) {
   return { x: ((clientX - rect.left) / rect.width) * CANVAS_W, y: ((clientY - rect.top) / rect.height) * CANVAS_H };
 }
 // Build-protected rectangles around both the starting field and the finish flag.
-const SPAWN_SAFE_ZONE = { left: 0, right: 260, top: 315, bottom: 440 };
-const GOAL_SAFE_ZONE = { left: 948, right: 1098, top: 250, bottom: 422 };
+const SPAWN_SAFE_ZONE = { left: 0, right: 280, top: 315, bottom: 440 };
+const GOAL_SAFE_ZONE = { left: 1090, right: 1249, top: 250, bottom: 422 };
 function rectanglesOverlap(a, b, gap = 0) {
   return a.left < b.right + gap && a.right > b.left - gap && a.top < b.bottom + gap && a.bottom > b.top - gap;
 }
@@ -601,35 +619,56 @@ function findObstacleAt(x, y) {
 }
 const PLATFORM_LAYOUTS = {
   meadow: [
-    { x: 0, width: 290, top: 430 }, { x: 324, width: 128, top: 475 },
-    { x: 475, width: 166, top: 395 }, { x: 665, width: 142, top: 428 },
-    { x: 830, width: 116, top: 470 }, { x: 958, width: 142, top: 390 }
+    { x: 0, width: 310, top: 430 }, { x: 330, width: 135, top: 450 },
+    { x: 500, width: 155, top: 390 }, { x: 700, width: 145, top: 430 },
+    { x: 915, width: 125, top: 445 }, { x: CANVAS_W - 142, width: 142, top: 390 }
   ],
   moon: [
-    { x: 0, width: 290, top: 430 }, { x: 315, width: 130, top: 405 },
-    { x: 470, width: 160, top: 360 }, { x: 660, width: 145, top: 410 },
-    { x: 825, width: 120, top: 375 }, { x: 958, width: 142, top: 390 }
+    { x: 0, width: 310, top: 430 }, { x: 330, width: 135, top: 410 },
+    { x: 500, width: 155, top: 365 }, { x: 700, width: 145, top: 410 },
+    { x: 915, width: 125, top: 380 }, { x: CANVAS_W - 142, width: 142, top: 390 }
   ],
   mars: [
-    { x: 0, width: 300, top: 430 }, { x: 330, width: 135, top: 455 },
-    { x: 490, width: 150, top: 395 }, { x: 670, width: 140, top: 445 },
-    { x: 835, width: 115, top: 400 }, { x: 958, width: 142, top: 390 }
+    { x: 0, width: 310, top: 430 }, { x: 330, width: 135, top: 455 },
+    { x: 500, width: 155, top: 400 }, { x: 700, width: 145, top: 445 },
+    { x: 915, width: 125, top: 410 }, { x: CANVAS_W - 142, width: 142, top: 390 }
   ],
   city: [
-    { x: 0, width: 300, top: 430 }, { x: 320, width: 130, top: 450 },
-    { x: 472, width: 160, top: 385 }, { x: 660, width: 150, top: 420 },
-    { x: 838, width: 112, top: 365 }, { x: 958, width: 142, top: 390 }
+    { x: 0, width: 310, top: 430 }, { x: 330, width: 135, top: 445 },
+    { x: 500, width: 155, top: 385 }, { x: 700, width: 145, top: 420 },
+    { x: 915, width: 125, top: 370 }, { x: CANVAS_W - 142, width: 142, top: 390 }
   ]
 };
-function getPlatformLayout() { return PLATFORM_LAYOUTS[roomState?.settings?.mapTheme || 'meadow'] || PLATFORM_LAYOUTS.meadow; }
+function getPlatformLayout() {
+  if (Array.isArray(roomState?.platforms) && roomState.platforms.length) return roomState.platforms;
+  return PLATFORM_LAYOUTS[roomState?.settings?.mapTheme || 'meadow'] || PLATFORM_LAYOUTS.meadow;
+}
+function getSpikeCrateState(o, time = synchronizedNow()) {
+  const phase = ((time + (Number(o.spikeOffset) || 0)) % 3000 + 3000) % 3000;
+  if (phase < 1000) return { side: 'left', extended: true, phase };
+  if (phase < 1500) return { side: 'left', extended: false, phase };
+  if (phase < 2500) return { side: 'right', extended: true, phase };
+  return { side: 'right', extended: false, phase };
+}
+function getSpikeCrateHazardBounds(o, time = synchronizedNow()) {
+  const state = getSpikeCrateState(o, time);
+  if (!state.extended) return null;
+  const x = Number(o.x) || 0, ground = Number.isFinite(o.groundY) ? o.groundY : GROUND_Y;
+  return state.side === 'left'
+    ? { left: x - 43, right: x - 23, top: ground - 29, bottom: ground - 2 }
+    : { left: x + 23, right: x + 43, top: ground - 29, bottom: ground - 2 };
+}
 function getSolidSurfaces() {
   const surfaces = getPlatformLayout().map((p, i) => ({ x: p.x, width: p.width, top: p.top, kind: 'platform', key: `platform-${i}` }));
   for (const o of (roomState?.obstacles || [])) {
-    // Crates are solid blocks: the top is a stable landing surface and the
-    // sides/underside stop the avatar. Other props are hazards/boosters.
-    if (o.type === 'crate') {
-      const groundY = Number.isFinite(o.groundY) ? o.groundY : GROUND_Y;
-      surfaces.push({ x: o.x - 21, width: 42, top: groundY - 39, bottom: groundY, kind: 'crate', key: o.id, object: o });
+    const groundY = Number.isFinite(o.groundY) ? o.groundY : GROUND_Y;
+    if (o.type === 'crate' || o.type === 'spikecrate') {
+      surfaces.push({ x: o.x - 25, width: 50, top: groundY - 43, bottom: groundY, kind: o.type, key: o.id, object: o });
+    } else if (o.type === 'stairs') {
+      // Three separate top surfaces make the staircase climbable, step by step.
+      surfaces.push({ x: o.x - 34, width: 22, top: groundY - 12, bottom: groundY, kind: 'stairs', key: `${o.id}-s1`, object: o });
+      surfaces.push({ x: o.x - 12, width: 22, top: groundY - 24, bottom: groundY - 12, kind: 'stairs', key: `${o.id}-s2`, object: o });
+      surfaces.push({ x: o.x + 10, width: 24, top: groundY - 36, bottom: groundY - 24, kind: 'stairs', key: `${o.id}-s3`, object: o });
     }
   }
   return surfaces;
@@ -646,18 +685,18 @@ function isStandingOnPlatform(x, feetY) {
 function getObstacleBounds(o) {
   const x = Number(o.x) || 0;
   const ground = Number.isFinite(o.groundY) ? o.groundY : GROUND_Y;
-  if (o.type === 'crate') return { left: x - 21, right: x + 21, top: ground - 39, bottom: ground };
-  if (o.type === 'saw') return { left: x - 25, right: x + 25, top: ground - 47, bottom: ground + 2 };
-  if (o.type === 'spikes') return { left: x - 27, right: x + 27, top: ground - 30, bottom: ground + 4 };
+  if (o.type === 'crate' || o.type === 'spikecrate') return { left: x - 25, right: x + 25, top: ground - 43, bottom: ground };
+  if (o.type === 'stairs') return { left: x - 34, right: x + 34, top: ground - 42, bottom: ground };
   if (o.type === 'spring') return { left: x - 26, right: x + 26, top: ground - 40, bottom: ground + 4 };
-  if (o.type === 'barrel') return { left: x - 23, right: x + 23, top: ground - 37, bottom: ground + 3 };
+  if (o.type === 'barrel') return { left: x - 22, right: x + 22, top: ground - 36, bottom: ground + 3 };
   return { left: x - 20, right: x + 20, top: ground - 30, bottom: ground + 3 };
 }
-function avatarOverlapsObstacle(x, feetY, o) {
-  const b = getObstacleBounds(o);
+function avatarOverlapsBounds(x, feetY, b) {
+  if (!b) return false;
   const avatar = { left: x - PLAYER_HALF_W, right: x + PLAYER_HALF_W, top: feetY - PLAYER_H, bottom: feetY + 3 };
   return avatar.right > b.left && avatar.left < b.right && avatar.bottom > b.top && avatar.top < b.bottom;
 }
+function avatarOverlapsObstacle(x, feetY, o) { return avatarOverlapsBounds(x, feetY, getObstacleBounds(o)); }
 function gameLoop(now) {
   if (currentScreen !== 'game' || !roomState || !['race','build'].includes(roomState.phase)) { rafId = null; physicsAccumulator = 0; return; }
   // Keep simulation steps small and deterministic, even after a delayed browser frame.
@@ -730,7 +769,7 @@ function physicsStep(dt, now) {
   const currentFeet = GROUND_Y + motion.y;
   const currentHead = currentFeet - PLAYER_H;
   for (const o of (roomState.obstacles || [])) {
-    if (o.type !== 'crate') continue;
+    if (!['crate', 'spikecrate'].includes(o.type)) continue;
     const b = getObstacleBounds(o);
     const verticalOverlap = currentFeet > b.top + 2 && currentHead < b.bottom - 2;
     const horizontalOverlap = nextX + PLAYER_HALF_W > b.left && nextX - PLAYER_HALF_W < b.right;
@@ -742,6 +781,13 @@ function physicsStep(dt, now) {
     }
   }
   motion.x = Math.max(PLAYER_HALF_W + 2, Math.min(CANVAS_W - PLAYER_HALF_W - 5, nextX));
+
+  // A small step-up allowance lets the animal climb each stair step without jumping.
+  if (motion.grounded && left !== right) {
+    const currentFeetForStep = GROUND_Y + motion.y;
+    const stairStep = getSolidSurfaces().filter(surface => surface.kind === 'stairs' && overlapsHorizontally(motion.x, surface) && surface.top < currentFeetForStep && currentFeetForStep - surface.top <= 15).sort((a,b) => a.top - b.top)[0];
+    if (stairStep) { motion.y = stairStep.top - GROUND_Y; motion.vy = 0; motion.grounded = true; }
+  }
 
   feetY = GROUND_Y + motion.y;
   if (motion.grounded && !isStandingOnPlatform(motion.x, feetY)) {
@@ -782,7 +828,7 @@ function physicsStep(dt, now) {
     } else {
       // Hit the underside of an airborne crate instead of passing through it.
       for (const o of (roomState.obstacles || [])) {
-        if (o.type !== 'crate') continue;
+        if (!['crate', 'spikecrate'].includes(o.type)) continue;
         const b = getObstacleBounds(o);
         const horizontalOverlap = motion.x + PLAYER_HALF_W > b.left && motion.x - PLAYER_HALF_W < b.right;
         if (horizontalOverlap && previousHead >= b.bottom - 2 && currentHeadAfter <= b.bottom) {
@@ -811,11 +857,17 @@ function physicsStep(dt, now) {
   }
   motion.jumping = !motion.grounded;
 
-  // Full rectangular hitboxes make the visible art and collisions agree.
-  // Crates are handled as solid platforms; hazards and spring are trigger objects.
+  // Solid crates/stairs are handled by platform collision; only active hazards trigger here.
   for (const o of (roomState.obstacles || [])) {
-    if (o.type === 'crate') continue;
-    if (!avatarOverlapsObstacle(motion.x, GROUND_Y + motion.y, o)) continue;
+    if (['crate', 'stairs'].includes(o.type)) continue;
+    let overlaps = false;
+    if (o.type === 'spikecrate') {
+      const hazardBox = getSpikeCrateHazardBounds(o, synchronizedNow());
+      overlaps = avatarOverlapsBounds(motion.x, GROUND_Y + motion.y, hazardBox);
+    } else {
+      overlaps = avatarOverlapsObstacle(motion.x, GROUND_Y + motion.y, o);
+    }
+    if (!overlaps) continue;
     if (lastHitAt[o.id] && now - lastHitAt[o.id] <= 1000) continue;
     lastHitAt[o.id] = now;
     if (o.type === 'spring') {
@@ -825,18 +877,19 @@ function physicsStep(dt, now) {
       jumpLaunchedByW = false;
       motion.coyoteUntil = 0;
       socket.emit('hitHazard', { id: o.id });
-    } else if (['saw','spikes','barrel'].includes(o.type)) {
-      // Freeze briefly on contact and let the server decide death vs shield.
-      // This avoids one machine guessing a respawn while another machine doesn't.
+    } else if (['spikecrate', 'barrel'].includes(o.type)) {
       motion.moving = false;
       motion.pauseUntil = now + 180;
       jumpQueuedUntil = 0;
       socket.emit('hitHazard', { id: o.id }, result => {
         if (!result?.ok) {
-          // A stale network snapshot/cooldown rejected this contact; retry after a
-          // short delay instead of leaving the character permanently invulnerable.
           lastHitAt[o.id] = performance.now() - 760;
           motion.pauseUntil = performance.now() + 100;
+        } else if (result.action === 'knockback') {
+          motion.x = Number.isFinite(result.x) ? result.x : motion.x;
+          motion.y = Number.isFinite(result.y) ? result.y : motion.y;
+          motion.moving = false; motion.grounded = false; motion.jumping = true;
+          motion.vy = -150; motion.pauseUntil = performance.now() + 360;
         }
       });
       return;
@@ -864,10 +917,11 @@ function drawWorld(now) {
   const theme = roomState.settings?.mapTheme || 'meadow';
   ctx.clearRect(0, 0, w, h);
   // Cache the static scenery and platforms per map: this removes dozens of path/gradient operations from every animation frame.
-  if (!sceneCache.canvas || sceneCache.theme !== theme) {
+  const layoutSignature = JSON.stringify(getPlatformLayout());
+  if (!sceneCache.canvas || sceneCache.theme !== theme || sceneCache.layoutSignature !== layoutSignature) {
     const bg = document.createElement('canvas'); bg.width = CANVAS_W; bg.height = CANVAS_H;
     drawScenery(bg.getContext('2d'), CANVAS_W, 0, 0, theme);
-    sceneCache = { theme, canvas: bg };
+    sceneCache = { theme, layoutSignature, canvas: bg };
   }
   ctx.drawImage(sceneCache.canvas, 0, 0);
   drawMapMotion(ctx, theme, now);
@@ -921,7 +975,7 @@ function drawWorld(now) {
         const b = getObstacleBounds(target); ctx.strokeStyle = '#ff6177'; ctx.lineWidth = 4;
         ctx.strokeRect(b.left, b.top, b.right - b.left, b.bottom - b.top);
         ctx.fillStyle = '#42192b'; roundRect(ctx, Math.max(4, Math.min(w - 130, target.x - 60)), Math.max(52, b.top - 29), 120, 22, 7); ctx.fill();
-        ctx.fillStyle = '#fff1f3'; ctx.font = 'bold 11px Nunito'; ctx.textAlign = 'center'; ctx.fillText('TÖRLÉS · 8 ARANY', Math.max(64, Math.min(w - 64, target.x)), Math.max(67, b.top - 15));
+        ctx.fillStyle = '#fff1f3'; ctx.font = 'bold 11px Nunito'; ctx.textAlign = 'center'; ctx.fillText(`TÖRLÉS · ${target.ownerId === socket.id ? 50 : 100} ARANY`, Math.max(64, Math.min(w - 64, target.x)), Math.max(67, b.top - 15));
       } else {
         ctx.fillStyle = '#42192b'; roundRect(ctx, Math.max(4, Math.min(w - 144, px - 68)), Math.max(52, ground - 72), 136, 23, 8); ctx.fill();
         ctx.fillStyle = '#fff1f3'; ctx.font = 'bold 11px Nunito'; ctx.textAlign = 'center'; ctx.fillText('VÁLASSZ TÁRGYAT', Math.max(72, Math.min(w - 72, px)), Math.max(67, ground - 57));
@@ -944,7 +998,7 @@ function drawWorld(now) {
           ctx.fillStyle = '#fff'; ctx.font = 'bold 11px Nunito'; ctx.textAlign='center'; ctx.fillText(blocked ? 'IDE NEM TEHETŐ' : 'ÚJ HELY · 12 ARANY', Math.max(74, Math.min(w-74, px)), Math.max(67, ground-57));
         }
       }
-    } else if (['crate','saw','spikes','spring','barrel'].includes(selectedBuildType)) {
+    } else if (['crate','stairs','spikecrate','spring','barrel'].includes(selectedBuildType)) {
       const placementError = getBuildPlacementError(selectedBuildType, px, ground);
       const blocked = !!placementError;
       ctx.globalAlpha = 0.72;
@@ -1054,17 +1108,55 @@ function drawGoal(ctx, length, now) {
 function drawObstacle(ctx, o, now) {
   const x = o.x; const ground = Number.isFinite(o.groundY) ? o.groundY : GROUND_Y;
   if (o.type === 'crate') {
-    ctx.fillStyle='#87512d'; ctx.fillRect(x-21,ground-39,42,39); ctx.fillStyle='#c88a4b'; ctx.fillRect(x-18,ground-36,36,33); ctx.strokeStyle='#754323'; ctx.lineWidth=4; ctx.strokeRect(x-17,ground-35,34,31); ctx.beginPath(); ctx.moveTo(x-16,ground-34); ctx.lineTo(x+16,ground-3); ctx.moveTo(x+16,ground-34); ctx.lineTo(x-16,ground-3); ctx.stroke(); ctx.fillStyle='#f3ca7d'; ctx.fillRect(x-4,ground-21,8,4);
-  } else if (o.type === 'saw') {
-    ctx.save(); ctx.translate(x,ground-23); ctx.rotate(now/180); ctx.fillStyle='#687c90'; ctx.strokeStyle='#edf6ff'; ctx.lineWidth=3; ctx.beginPath(); for(let i=0;i<24;i++){const a=i*Math.PI*2/24;const r=i%2===0?24:17;const px=Math.cos(a)*r,py=Math.sin(a)*r;if(i===0)ctx.moveTo(px,py);else ctx.lineTo(px,py);}ctx.closePath();ctx.fill();ctx.stroke();ctx.fillStyle='#d6e4f3';ctx.beginPath();ctx.arc(0,0,7,0,Math.PI*2);ctx.fill();ctx.fillStyle='#425269';ctx.beginPath();ctx.arc(0,0,3,0,Math.PI*2);ctx.fill();ctx.restore();ctx.fillStyle='#384c66';ctx.fillRect(x-19,ground-3,38,5);
-  } else if (o.type === 'spikes') {
-    ctx.fillStyle='#b9c9d9';ctx.strokeStyle='#617b97';ctx.lineWidth=2;ctx.beginPath();for(let i=0;i<3;i++){const sx=x-24+i*16;ctx.moveTo(sx,ground);ctx.lineTo(sx+8,ground-27);ctx.lineTo(sx+16,ground);}ctx.closePath();ctx.fill();ctx.stroke();ctx.fillStyle='#647b93';ctx.fillRect(x-25,ground-2,50,5);
+    // Chunky wooden crate, visibly solid and climbable.
+    ctx.fillStyle='#694022'; ctx.fillRect(x-25,ground-43,50,43);
+    ctx.fillStyle='#b77a41'; ctx.fillRect(x-22,ground-40,44,37);
+    ctx.fillStyle='#d99c59'; ctx.fillRect(x-20,ground-38,40,5);
+    ctx.strokeStyle='#774522'; ctx.lineWidth=4; ctx.strokeRect(x-19,ground-36,38,31);
+    ctx.lineWidth=5; ctx.beginPath(); ctx.moveTo(x-17,ground-34); ctx.lineTo(x+17,ground-3); ctx.moveTo(x+17,ground-34); ctx.lineTo(x-17,ground-3); ctx.stroke();
+    ctx.strokeStyle='#f0c47b'; ctx.lineWidth=2; ctx.strokeRect(x-23,ground-41,46,39);
+  } else if (o.type === 'stairs') {
+    // Three solid wooden steps, each with a visible top and front face.
+    const steps = [ {x:x-34,y:ground-13,w:22,h:13}, {x:x-12,y:ground-25,w:22,h:25}, {x:x+10,y:ground-37,w:24,h:37} ];
+    for (const st of steps) {
+      ctx.fillStyle='#794525'; ctx.fillRect(st.x,st.y,st.w,st.h);
+      ctx.fillStyle='#bd8045'; ctx.fillRect(st.x+2,st.y+2,st.w-4,Math.max(3,st.h-3));
+      ctx.fillStyle='#ecc078'; ctx.fillRect(st.x,st.y,st.w,4);
+      ctx.strokeStyle='#704225'; ctx.lineWidth=1.5; ctx.strokeRect(st.x,st.y,st.w,st.h);
+    }
+    ctx.strokeStyle='#f7d59a'; ctx.lineWidth=2; ctx.beginPath();ctx.moveTo(x-34,ground-13);ctx.lineTo(x+34,ground-37);ctx.stroke();
+  } else if (o.type === 'spikecrate') {
+    // A wooden box with one side that thrusts spikes out, retracts, then switches sides.
+    const state = getSpikeCrateState(o, now + serverClockOffset);
+    const progress = state.extended ? Math.min(1, Math.max(.12, Math.min(state.phase < 170 ? state.phase/170 : 1, state.phase > 850 ? (1000-state.phase)/150 : 1))) : 0;
+    ctx.fillStyle='#5f3b28'; ctx.fillRect(x-25,ground-43,50,43);
+    ctx.fillStyle='#b77a42'; ctx.fillRect(x-22,ground-40,44,37);
+    ctx.fillStyle='#dfa45d'; ctx.fillRect(x-21,ground-39,42,6);
+    ctx.strokeStyle='#704326'; ctx.lineWidth=3; ctx.strokeRect(x-20,ground-33,40,29);
+    ctx.beginPath();ctx.moveTo(x-17,ground-31);ctx.lineTo(x+17,ground-5);ctx.moveTo(x+17,ground-31);ctx.lineTo(x-17,ground-5);ctx.stroke();
+    ctx.fillStyle='#3a2a24'; ctx.fillRect(x-4,ground-24,8,9); ctx.fillStyle='#f1ca7d'; ctx.fillRect(x-2,ground-21,4,5);
+    const side = state.side === 'left' ? -1 : 1;
+    const rootX = x + side*22;
+    // Metal launch rails and three points; extension length follows an animated ramp.
+    ctx.strokeStyle='#64748b'; ctx.lineWidth=3;
+    for (let i=0;i<3;i++) {
+      const yy=ground-29+i*9;
+      ctx.beginPath();ctx.moveTo(rootX,yy);ctx.lineTo(rootX+side*(3+22*progress),yy);ctx.stroke();
+      ctx.fillStyle='#dbe5f0';ctx.beginPath();ctx.moveTo(rootX+side*(3+22*progress),yy-4);ctx.lineTo(rootX+side*(12+22*progress),yy);ctx.lineTo(rootX+side*(3+22*progress),yy+4);ctx.closePath();ctx.fill();
+    }
+    ctx.fillStyle=state.extended?'#ff7d5f':'#9eb0c3';ctx.font='900 8px Nunito';ctx.textAlign='center';ctx.fillText(state.extended?'VESZÉLY':'VÁR',x,ground-48);
   } else if (o.type === 'spring') {
-    ctx.fillStyle='#2cb56c';ctx.fillRect(x-24,ground-8,48,8);ctx.strokeStyle='#f2f6ff';ctx.lineWidth=4;ctx.beginPath();ctx.moveTo(x,ground-8);for(let i=0;i<4;i++)ctx.lineTo(x+(i%2===0?13:-13),ground-11-i*7);ctx.stroke();ctx.fillStyle='#ff5d69';ctx.fillRect(x-22,ground-38,44,8);ctx.fillStyle='#ff9ba1';ctx.fillRect(x-18,ground-36,36,3);
+    ctx.fillStyle='#23864f';ctx.fillRect(x-25,ground-9,50,9);ctx.strokeStyle='#f2f6ff';ctx.lineWidth=4;ctx.beginPath();ctx.moveTo(x,ground-8);for(let i=0;i<4;i++)ctx.lineTo(x+(i%2===0?13:-13),ground-11-i*7);ctx.stroke();ctx.fillStyle='#ff5d69';ctx.fillRect(x-22,ground-38,44,8);ctx.fillStyle='#ffb7b8';ctx.fillRect(x-17,ground-36,34,3);ctx.strokeStyle='#fff0f1';ctx.lineWidth=2;ctx.strokeRect(x-22,ground-38,44,8);
   } else if (o.type === 'barrel') {
-    ctx.save();ctx.translate(x,ground-18);ctx.rotate(now/320);ctx.fillStyle='#ad682f';ctx.strokeStyle='#633c27';ctx.lineWidth=3;ctx.beginPath();ctx.ellipse(0,0,20,18,0,0,Math.PI*2);ctx.fill();ctx.stroke();ctx.strokeStyle='#e2b16c';ctx.lineWidth=4;ctx.beginPath();ctx.ellipse(0,0,13,18,0,0,Math.PI*2);ctx.stroke();ctx.beginPath();ctx.moveTo(-19,0);ctx.lineTo(19,0);ctx.stroke();ctx.restore();
+    // An upright oak barrel: tapered body, curved staves, iron hoops and a visible lid.
+    ctx.save();ctx.translate(x,ground-2);
+    ctx.fillStyle='#633a24';ctx.beginPath();ctx.moveTo(-17,-35);ctx.quadraticCurveTo(-25,-19,-19,-4);ctx.lineTo(19,-4);ctx.quadraticCurveTo(25,-19,17,-35);ctx.closePath();ctx.fill();
+    ctx.fillStyle='#a96530';ctx.beginPath();ctx.moveTo(-14,-33);ctx.quadraticCurveTo(-20,-18,-15,-6);ctx.lineTo(15,-6);ctx.quadraticCurveTo(20,-18,14,-33);ctx.closePath();ctx.fill();
+    ctx.strokeStyle='#633b27';ctx.lineWidth=2;for(const sx of [-9,-3,3,9]){ctx.beginPath();ctx.moveTo(sx,-32);ctx.quadraticCurveTo(sx+(sx<0?-2:2),-18,sx,-7);ctx.stroke();}
+    ctx.strokeStyle='#8b98a9';ctx.lineWidth=4;ctx.beginPath();ctx.ellipse(0,-28,16,4,0,0,Math.PI*2);ctx.stroke();ctx.beginPath();ctx.ellipse(0,-9,18,4,0,0,Math.PI*2);ctx.stroke();
+    ctx.fillStyle='#c58a4d';ctx.beginPath();ctx.ellipse(0,-35,15,4.5,0,0,Math.PI*2);ctx.fill();ctx.strokeStyle='#6b4228';ctx.lineWidth=2;ctx.stroke();ctx.beginPath();ctx.ellipse(0,-35,10,2.5,0,0,Math.PI*2);ctx.stroke();ctx.restore();
   }
-  ctx.fillStyle='#14263d55';ctx.beginPath();ctx.ellipse(x,ground+2,o.type==='saw'?24:19,4,0,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#14263d55';ctx.beginPath();ctx.ellipse(x,ground+2,o.type==='stairs'?28:22,4,0,0,Math.PI*2);ctx.fill();
 }
 function drawAnimalNameTag(ctx, p, x, base, bob) {
   ctx.save();
