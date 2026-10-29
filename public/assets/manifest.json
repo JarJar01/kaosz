@@ -1,0 +1,76 @@
+{
+  "pack": "AllatKaosz animal sprites",
+  "version": "1.0",
+  "canvas_svg": {
+    "width": 128,
+    "height": 128
+  },
+  "animals": [
+    {
+      "id": "pig",
+      "name": "Malac",
+      "idle": "pig.svg",
+      "idle_png": "pig.png",
+      "run_svg": "pig_run.svg",
+      "run_png": "pig_run.png",
+      "run_frames": 4,
+      "jump": "pig_jump.svg",
+      "jump_png": "pig_jump.png",
+      "fall": "pig_fall.svg",
+      "fall_png": "pig_fall.png"
+    },
+    {
+      "id": "capybara",
+      "name": "Kapibara",
+      "idle": "capybara.svg",
+      "idle_png": "capybara.png",
+      "run_svg": "capybara_run.svg",
+      "run_png": "capybara_run.png",
+      "run_frames": 4,
+      "jump": "capybara_jump.svg",
+      "jump_png": "capybara_jump.png",
+      "fall": "capybara_fall.svg",
+      "fall_png": "capybara_fall.png"
+    },
+    {
+      "id": "horse",
+      "name": "Ló",
+      "idle": "horse.svg",
+      "idle_png": "horse.png",
+      "run_svg": "horse_run.svg",
+      "run_png": "horse_run.png",
+      "run_frames": 4,
+      "jump": "horse_jump.svg",
+      "jump_png": "horse_jump.png",
+      "fall": "horse_fall.svg",
+      "fall_png": "horse_fall.png"
+    },
+    {
+      "id": "penguin",
+      "name": "Pingvin",
+      "idle": "penguin.svg",
+      "idle_png": "penguin.png",
+      "run_svg": "penguin_run.svg",
+      "run_png": "penguin_run.png",
+      "run_frames": 4,
+      "jump": "penguin_jump.svg",
+      "jump_png": "penguin_jump.png",
+      "fall": "penguin_fall.svg",
+      "fall_png": "penguin_fall.png"
+    },
+    {
+      "id": "raccoon",
+      "name": "Mosómedve",
+      "idle": "raccoon.svg",
+      "idle_png": "raccoon.png",
+      "run_svg": "raccoon_run.svg",
+      "run_png": "raccoon_run.png",
+      "run_frames": 4,
+      "jump": "raccoon_jump.svg",
+      "jump_png": "raccoon_jump.png",
+      "fall": "raccoon_fall.svg",
+      "fall_png": "raccoon_fall.png"
+    }
+  ],
+  "notes": "Run sheets: 4 frames left-to-right. SVG logical frame size 128x128; PNG rendered at 256x256 per frame. Transparent background. Files are original vector drawings for this asset pack, not Vecteezy downloads."
+}
