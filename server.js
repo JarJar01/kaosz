@@ -154,7 +154,7 @@ function getPlayer(room, id) { return room.players.find(p => p.id === id); }
 function publicPlayer(p) {
   return {
     id: p.id, name: p.name, animal: p.animal, joinOrder: p.joinOrder, startX: p.startX,
-    x: p.x, y: p.y, face: p.face, moving: p.moving, jumping: p.jumping,
+    x: p.x, y: p.y, vy: p.vy || 0, face: p.face, moving: p.moving, jumping: p.jumping,
     score: p.score, gold: p.gold, cups: getCupCount(p.name), shields: p.shields, lifebuoys: p.lifebuoys || 0, jumpBoosts: p.jumpBoosts || 0, finished: p.finished,
     finishRank: p.finishRank, deaths: p.deaths, knockbackCount: p.knockbackCount || 0, connected: p.connected
   };
@@ -174,7 +174,7 @@ function emitRoom(room) { io.to(room.code).emit('roomState', publicRoom(room)); 
 function emitPositions(room) {
   io.to(room.code).emit('playersMoved', room.players.map(p => ({
     id: p.id, name: p.name, animal: p.animal, joinOrder: p.joinOrder, startX: p.startX,
-    x: p.x, y: p.y, face: p.face, moving: p.moving, jumping: p.jumping,
+    x: p.x, y: p.y, vy: p.vy || 0, face: p.face, moving: p.moving, jumping: p.jumping,
     score: p.score, gold: p.gold, cups: getCupCount(p.name), shields: p.shields, lifebuoys: p.lifebuoys || 0, jumpBoosts: p.jumpBoosts || 0, finished: p.finished,
     finishRank: p.finishRank, deaths: p.deaths, knockbackCount: p.knockbackCount || 0
   })));
@@ -219,7 +219,7 @@ function resetPlayerForRace(p, index = 0) {
   // Slightly stagger the starting spots so all chosen animals and nameplates remain visible.
   // The entire group still begins on the left-most starting platform.
   p.startX = 36 + index * 28;
-  p.x = p.startX; p.y = 0; p.face = 1; p.moving = false; p.jumping = false;
+  p.x = p.startX; p.y = 0; p.vy = 0; p.face = 1; p.moving = false; p.jumping = false;
   p.finished = false; p.finishRank = null; p.maxMilestonePaid = 0; p.hitCooldownUntil = 0;
 }
 function platformAtX(x, padding = 24, theme = 'meadow') {
@@ -439,6 +439,7 @@ io.on('connection', socket => {
     const maxX = room.settings.mapLength - 40;
     p.x = clamp(Number(payload.x) || p.x, 0, maxX);
     p.y = clamp(Number(payload.y) || 0, -220, 800);
+    p.vy = clamp(Number(payload.vy) || 0, -900, 900);
     p.face = Number(payload.face) < 0 ? -1 : 1;
     p.moving = !!payload.moving; p.jumping = !!payload.jumping;
     const milestone = Math.floor(p.x / 250);

@@ -37,3 +37,15 @@ HIBAELHÁRÍTÁS
 Ha a start.bat hibát jelez, ne zárd be a fekete ablakot: másold ki a hibaüzenetet, és az alapján meg lehet keresni a problémát.
 
 Megjegyzés: a JavaScript szintaxisellenőrzése és a ZIP-ellenőrzés önmagában nem helyettesíti a több számítógépes, valódi hálózati tesztet. Első körben próbáljátok ki két böngészőből.
+
+
+VERZIÓ 1.14 – BEÉPÍTETT ÁLLATGRAFIKA
+-----------------------------------
+A teljes játék ZIP tartalmazza az assets/animals mappát is. Az álló, futó (4 képkockás), ugró és eső sprite-ok a játékból közvetlenül betöltődnek. A futó sprite animációja 4 frame-ből áll, a ugró/eső póz a játékos függőleges mozgását követi. A grafikai fájlok eredeti, ehhez a projektcsomaghoz készült rajzok, nem Vecteezy letöltések.
+
+
+TELJES JÁTÉK CSOMAG – 1.14
+-------------------------
+Ez a ZIP a teljes játékot és a beépített állatgrafikai csomagot együtt tartalmazza: public/assets/animals/. A játék közvetlenül ezekből tölti be az állatok álló, négy képkockás futó, ugró és eső pózát. A teljes animációs asset-csomag külön előnézete: /assets/animals/preview.html.
+
+Az állatgrafikák ehhez a projekthez készített, eredeti rajzok. Nem a Vecteezy-ről letöltött állományok; a Vecteezy forrásfájljaihoz innen nem volt közvetlen letöltési hozzáférés.

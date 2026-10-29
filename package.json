@@ -1,8 +1,8 @@
 {
   "name": "allat-kaosz",
-  "version": "1.13.0",
+  "version": "1.14.0",
   "private": true,
-  "description": "Online 2D állatos akadályverseny kupamentéssel, változó platformelrendezéssel, lépcsővel, váltakozó tüskés ládával és nem halálos hordóval",
+  "description": "Online 2D állatos akadályverseny 5 állat sprite csomaggal, animált futás/ugrás/esés pózokkal, változó platformelrendezéssel és kupamentéssel.",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"

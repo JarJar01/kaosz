@@ -1,6 +1,6 @@
 @echo off
 chcp 65001 >nul
-title ALLATKAOSZ - Online 2D jatek
+title ALLATKAOSZ 1.14 - Online 2D jatek
 cd /d "%~dp0"
 color 0B
 

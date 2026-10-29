@@ -11,7 +11,7 @@
 @media(max-width:470px){.brand{font-size:19px}.brand-paw{width:34px;height:34px}.hero-copy h1{font-size:36px}.hero-copy p{font-size:13px}.hero-image-wrap{height:165px}.hero-pills span{font-size:9px}.animal-choice .animal-emoji{font-size:23px}.animal-choice strong{font-size:8px}.side-column{grid-template-columns:1fr}.game-top .game-title h1{font-size:24px}.status-chip{font-size:10px;padding:8px}.shop-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.build-top{align-items:flex-start}.world-frame .canvas-pill{font-size:9px;padding:6px 7px}}
 
 /* Refinements: one fixed-screen platform course, visible playfield, compact build shop. */
-#worldCanvas{aspect-ratio:1100/620;min-height:0;max-height:none;width:100%;height:auto;display:block}
+#worldCanvas{aspect-ratio:1250/620;min-height:0;max-height:none;width:100%;height:auto;display:block}
 .world-frame{isolation:isolate}
 .game-layout{grid-template-columns:minmax(0,1fr) 275px;align-items:start}
 .side-column{min-width:0;display:flex;flex-direction:column;gap:10px}
@@ -155,14 +155,14 @@
 /* Use the same illustrated animals in the lobby that appear on the course. */
 .animal-choice { min-height:112px; }
 .animal-sprite-preview { position:relative; display:block; width:64px; height:64px; overflow:hidden; margin:0 auto 3px; filter:drop-shadow(0 4px 4px #07132755); }
-.animal-sprite-preview img { position:absolute; top:0; left:0; display:block; width:128px; height:64px; max-width:none; object-fit:fill; }
+.animal-sprite-preview img { position:absolute; inset:0; display:block; width:64px; height:64px; max-width:none; object-fit:contain; }
 .animal-choice.selected .animal-sprite-preview { filter:drop-shadow(0 0 5px #ffe17b88) drop-shadow(0 4px 4px #07132755); }
 .animal-mini-sprite { position:relative; display:block; width:32px; height:32px; overflow:hidden; }
-.animal-mini-sprite img { position:absolute; top:0; left:0; width:64px; height:32px; max-width:none; display:block; }
+.animal-mini-sprite img { position:absolute; inset:0; width:32px; height:32px; max-width:none; object-fit:contain; display:block; }
 .player-avatar { overflow:hidden; }
-@media(max-width:760px) { .animal-choice { min-height:101px; } .animal-sprite-preview { width:52px; height:52px; } .animal-sprite-preview img { width:104px; height:52px; } }
+@media(max-width:760px) { .animal-choice { min-height:101px; } .animal-sprite-preview { width:52px; height:52px; } .animal-sprite-preview img { width:52px; height:52px; } }
 
-/* ÁllatKáosz 1.10 — immersive fullscreen game HUD. */
+/* ÁllatKáosz 1.13 — immersive fullscreen game HUD. */
 body.game-mode { overflow: hidden; min-height: 100%; }
 body.game-mode .topbar,
 body.game-mode .ambient { display: none !important; }
@@ -376,3 +376,95 @@ body.game-mode #screenGame .end-layout { width: min(760px, 96vw); max-height: 94
   .finish-reward-notice strong { font-size: 11px; }
   .finish-reward-notice span:not(.finish-reward-icon) { font-size: 9px; }
 }
+
+/* ÁllatKáosz 1.13: integrated top-left build toolbar; no build-phase zoom or object inventory list. */
+.hud-build-panel {
+  position: absolute;
+  z-index: 17;
+  top: 105px;
+  left: 12px;
+  right: auto;
+  bottom: auto;
+  width: max-content;
+  max-width: calc(100% - 24px);
+  max-height: none;
+  overflow: hidden;
+  padding: 7px 9px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border: 1px solid #9fc9ef;
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(8,24,43,.91), rgba(14,37,60,.88));
+  box-shadow: 0 6px 22px #06132788, inset 0 1px 0 #ffffff1a;
+  backdrop-filter: blur(5px);
+}
+.build-toolbar-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+.build-toolbar-title { display:flex; align-items:baseline; gap:8px; min-width:0; flex-wrap:wrap; }
+.build-toolbar-title strong { color:#ffe17c; font:900 11px/1.2 'Baloo 2',Nunito,sans-serif; white-space:nowrap; }
+.build-toolbar-title span { color:#d1e4f6; font-size:9px; line-height:1.2; }
+.build-toolbar-actions { display:flex; align-items:center; gap:6px; flex:none; }
+.build-toolbar-actions .build-turn-pill { padding:4px 6px; font-size:8px; }
+.build-skip-button { padding:5px 8px; font-size:9px; white-space:nowrap; border-radius:8px; }
+.build-toolbar-row { display:flex; align-items:stretch; gap:6px; min-width:0; max-width:100%; overflow-x:auto; overflow-y:hidden; scrollbar-width:thin; scrollbar-color:#6d94bc #10233a; }
+.build-toolbar-items, .build-toolbar-tools { display:flex; align-items:stretch; gap:5px; flex:0 0 auto; }
+.build-toolbar-tools { padding-left:6px; border-left:1px solid #6687a8; }
+.hud-build-panel .shop-item.build-chip {
+  flex:0 0 62px;
+  width:62px;
+  min-width:62px;
+  min-height:57px;
+  padding:4px 3px 5px;
+  gap:2px;
+  border-radius:8px;
+  background:rgba(16,36,60,.96);
+}
+.hud-build-panel .shop-item.build-chip .shop-icon { font-size:21px; line-height:1.05; }
+.hud-build-panel .shop-item.build-chip strong { display:block; width:100%; min-height:16px; font-size:8px; line-height:1.05; text-align:center; overflow-wrap:anywhere; }
+.hud-build-panel .shop-item.build-chip small { font-size:9px; line-height:1; white-space:nowrap; }
+.hud-build-panel .shop-item.build-chip.edit-tool { flex-basis:72px; width:72px; min-width:72px; }
+.hud-build-panel .shop-item.build-chip.selected { border:2px solid #ffda68; background:#314866; }
+.hud-build-panel .shop-item.build-chip:disabled { opacity:.43; filter:saturate(.55); }
+@media(max-width:760px) {
+  .hud-build-panel { top: 100px; left: 6px; max-width: calc(100% - 12px); padding:5px 6px 6px; }
+  .build-toolbar-title { gap:5px; }
+  .build-toolbar-title strong { font-size:9px; }
+  .build-toolbar-title span { font-size:8px; }
+  .hud-build-panel .shop-item.build-chip { flex-basis:56px; width:56px; min-width:56px; min-height:52px; }
+  .hud-build-panel .shop-item.build-chip.edit-tool { flex-basis:66px; width:66px; min-width:66px; }
+  .hud-build-panel .shop-item.build-chip .shop-icon { font-size:18px; }
+  .hud-build-panel .shop-item.build-chip strong { font-size:7px; min-height:14px; }
+  .hud-build-panel .shop-item.build-chip small { font-size:8px; }
+}
+@media(max-width:480px) {
+  .build-toolbar-head { gap:5px; }
+  .build-toolbar-title { flex-direction:column; align-items:flex-start; gap:2px; }
+  .build-toolbar-actions .build-turn-pill { display:none; }
+}
+
+
+/* 1.13: name-saved trophy intro animation and larger randomized world canvas. */
+#worldCanvas { aspect-ratio:1250/620; }
+.cup-intro-overlay { position:fixed; inset:0; z-index:200; display:grid; place-items:center; padding:18px; background:radial-gradient(circle at 50% 42%,#293e70d9,#071123ed 70%); backdrop-filter:blur(8px); animation:cupOverlayIn .28s ease-out; }
+.cup-intro-overlay.leaving { opacity:0; transition:opacity .2s ease; }
+.cup-intro-card { position:relative; width:min(94vw,420px); padding:30px 26px 26px; text-align:center; color:#fff; border:2px solid #ffe08a; border-radius:25px; background:linear-gradient(155deg,#243d62,#111d34 72%); box-shadow:0 22px 80px #0009,inset 0 1px #ffffff2b; overflow:hidden; animation:cupCardPop .55s cubic-bezier(.16,1.4,.42,1); }
+.cup-intro-card:before { content:""; position:absolute; inset:-60% -30% auto; height:200px; background:radial-gradient(ellipse,#ffd96a2a,transparent 68%); pointer-events:none; }
+.cup-intro-spark { color:#ffdb70; letter-spacing:13px; font-size:15px; animation:cupSpark 1.6s ease-in-out infinite alternate; }
+.cup-intro-trophy { font-size:78px; line-height:1.15; margin:5px 0 2px; filter:drop-shadow(0 8px 0 #a66b254c); animation:cupFloat 1.8s ease-in-out infinite; }
+.cup-intro-card>small { color:#a8caed; font-size:10px; font-weight:1000; letter-spacing:2px; }
+.cup-intro-card h2 { position:relative; margin:8px 0 11px; font:900 24px/1.18 'Baloo 2',Nunito,sans-serif; }
+.cup-intro-count { display:flex; align-items:baseline; justify-content:center; gap:9px; padding:8px 0 3px; }
+.cup-intro-count strong { color:#ffe074; font:1000 64px/.95 'Baloo 2',Nunito,sans-serif; text-shadow:0 3px #a66526; }
+.cup-intro-count span { color:#fff2c1; font-weight:900; font-size:19px; }
+.cup-intro-card p { max-width:305px; margin:12px auto 20px; color:#bed1e7; font-size:12px; line-height:1.55; }
+.cup-intro-card .primary-button { width:100%; justify-content:center; }
+@keyframes cupOverlayIn { from { opacity:0; } to { opacity:1; } }
+@keyframes cupCardPop { from { opacity:0; transform:translateY(25px) scale(.82) rotate(-2deg); } to { opacity:1; transform:translateY(0) scale(1) rotate(0); } }
+@keyframes cupFloat { 0%,100% { transform:translateY(0) rotate(-3deg); } 50% { transform:translateY(-9px) rotate(3deg); } }
+@keyframes cupSpark { from { opacity:.45; transform:scale(.95); } to { opacity:1; transform:scale(1.05); } }
