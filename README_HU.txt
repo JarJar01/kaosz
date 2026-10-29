@@ -1,7 +1,7 @@
 ALLATKAOSZ — ONLINE 2D ALLATOS AKADALYVERSENY
 ================================================
 
-JAVITASOK EBBEN A VALTOZATBAN (1.4)
+JAVITASOK EBBEN A VALTOZATBAN (1.5)
 ---------------------------
 - A helyi karakter mozgasa helyben szimulalt; a halozati poziciok nem irjak felul minden frame-ben. Az ugrashoz gombpuffer es peremsegitseg van, a palya/platform utkozesek toleransabbak
 - A fizika fix 120 Hz-es lepesekkel fut, az ugrashoz 180 ms-os gombpuffer es 140 ms-os peremsegitseg tartozik; a tavoli karakterek pozicioja simitva jelenik meg
@@ -66,10 +66,10 @@ Epitkezeskor: a sorodon belul valassz egy epitmeny-ikont a jobb oldali panelen, 
 
 MEGJEGYZES
 ----------
-Javitott 1.4 valtozat: rovid, fix palya; TAB-os ponttabla; W billentyus ugras gombpufferrel es peremsegitseggel; fixlepeses fizika; stabil leeses-visszaallas; valodi lada-platform/oldalutkozes; objektum-figura teglalap alapú csapdaerzekeles; szerver altal ellenorzott csapdaeredmeny; epitmeny-elonezet es a celzaszlo koruli tiltott zona. A JavaScript fajlok szintaxisellenorzese sikeres volt, de ebben a letrehozasi kornyezetben az npm csomagok letoltese idotullepes miatt nem fejezodott be, ezert teljes, tobbgepes futtatasi tesztet nem tudtam lefuttatni. Az elso inditaskor a start.bat probalja telepiteni a fuggosegeket.
+Javitott 1.5 valtozat: rovid, fix palya; TAB-os ponttabla; W billentyus ugras gombpufferrel es peremsegitseggel; fixlepeses fizika; stabil leeses-visszaallas; valodi lada-platform/oldalutkozes; objektum-figura teglalap alapú csapdaerzekeles; szerver altal ellenorzott csapdaeredmeny; epitmeny-elonezet es a celzaszlo koruli tiltott zona. A JavaScript fajlok szintaxisellenorzese sikeres volt, de ebben a letrehozasi kornyezetben az npm csomagok letoltese idotullepes miatt nem fejezodott be, ezert teljes, tobbgepes futtatasi tesztet nem tudtam lefuttatni. Az elso inditaskor a start.bat probalja telepiteni a fuggosegeket.
 
 
-1.4 FRISSÍTÉS
+1.4 FRISSÍTÉS (korábbi)
 - A karakterek külön, vektoros SVG állatsprite-okat használnak két mozgó lábpozícióval.
 - A visszaszámláló a pályán belül, jól látható helyen van.
 - Építkezéskor középen megjelenik, hogy ki van soron.
@@ -77,9 +77,24 @@ Javitott 1.4 valtozat: rovid, fix palya; TAB-os ponttabla; W billentyus ugras go
 - Egy játékos egy építkezési körben több tárgyat is lerakhat; a kör a skip gombbal vagy időlejárattal ér véget.
 
 
-1.4 - UJ JATEKKEZELES
+1.4 - UJ JATEKKEZELES (korábbi)
 - A jatekosok nagyobb, allatszeru, sajat SVG rajzolt karaktereket kapnak, futaskor ket labpozicioval.
 - A verseny- vagy epitkezesi visszaszamlalo a palya feluleten jelenik meg.
 - Epitkezesi fazisban nagy kozepso jelzes mutatja, melyik jatekos van soron.
 - Az epitkezesi ido a varoteremben, a szobagazda beallitasai kozott allithato (5-180 masodperc).
 - Egy epitkezesi turnus alatt tobb epitmeny is lerakhato / pajzs is vasarolhato, amig van arany es idokeret. A turnus a „Kesz / Kihagyom” gombbal vagy az ido lejarataval zarul.
+
+
+1.5-ÖS JAVÍTÁSOK
+- Az építkezési középső üzenet csak a várakozóknak jelenik meg, új építőnél legfeljebb 2 másodpercre.
+- A W ugrás magassága változó: rövid nyomás kisebb ugrás, nyomva tartás a korábbi maximális ugrást adja.
+- Gazdagabb rajzolt háttér: hegyek, erdő, napfény, felhők, madarak és animált víz.
+- Az építmények ütköződobozai alapján nem lehet egymásra pakolni tárgyakat.
+- A cél zászlója körül csak egy kis négyzet tiltott építési terület; nem zár el teljes függőleges sávot.
+
+1.5 FRISSÍTÉS
+- Építkezési értesítő: a középső üzenet csak a várakozó játékosoknak jelenik meg, és új építőnél 2 másodperc után eltűnik; az aktív építő nem látja.
+- Változó ugrásmagasság: rövid W-koppintással kisebb ugrás, nyomva tartással az előző maximális ugrás.
+- A pálya háttérgrafikája részletesebb: napfény, rétegzett havas hegyek, zöld dombok, távoli erdő, mozgó felhők, madarak és animált víz.
+- Az építmények hitboxai alapján nem lehet egy tárgyat egy másikra helyezni; a kliens előnézete pirossal jelzi a tiltott helyet.
+- A zászló körüli tiltott építési zóna kis téglalap, nem teljes magasságú sáv; a szerver ugyanezt ellenőrzi.

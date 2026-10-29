@@ -30,6 +30,8 @@ let currentRenderedPhase = null;
 let selectedBuildType = null;
 let preferredName = '';
 let toastTimeout = null;
+let buildNoticeTimer = null;
+let buildNoticeTurnKey = null;
 let lastTick = performance.now();
 let lastSendAt = 0;
 let keys = Object.create(null);
@@ -42,7 +44,11 @@ let remoteVisuals = new Map();
 let motion = { x: 45, y: 0, vy: 0, face: 1, moving: false, jumping: false, grounded: true, coyoteUntil: 0, pauseUntil: 0 };
 let mouseWorld = null;
 let jumpQueuedUntil = 0;
+let jumpHeld = false;
+let jumpLaunchedByW = false;
 const JUMP_BUFFER_MS = 180;
+const JUMP_FULL_POWER = -625;
+const JUMP_TAP_POWER = -355;
 const COYOTE_TIME_MS = 140;
 let rafId = null;
 
@@ -100,7 +106,7 @@ socket.on('roomState', next => {
         motion = { x: me?.x ?? me?.startX ?? 45, y: me?.y ?? 0, vy: 0, face: 1, moving: false, jumping: false, grounded: true, coyoteUntil: 0, pauseUntil: 0 };
         lastDeathCount = me?.deaths ?? 0; lastShieldCount = me?.shields ?? 0;
         lastFallAt = 0; lastSendAt = 0;
-        jumpQueuedUntil = 0;
+        jumpQueuedUntil = 0; jumpHeld = false; jumpLaunchedByW = false;
       }
       if (next.phase !== 'build' || next.currentBuilderId !== socket.id) selectedBuildType = null;
       renderGame();
@@ -137,7 +143,7 @@ socket.on('playersMoved', positions => {
       motion.jumping = shieldKnockback && !respawned;
       motion.coyoteUntil = 0;
       motion.pauseUntil = performance.now() + (respawned ? 170 : 90);
-      jumpQueuedUntil = 0;
+      jumpQueuedUntil = 0; jumpLaunchedByW = false;
     }
     lastDeathCount = deathCount; lastShieldCount = shieldCount;
     if (me.finished) { motion.x = me.x; motion.y = me.y || 0; motion.vy = 0; motion.moving = false; motion.grounded = true; motion.jumping = false; }
@@ -264,8 +270,9 @@ function renderGame() {
     const x = Math.max(28, Math.min(CANVAS_W - 28, rawX));
     // The cursor marks the center of the build; groundY is the sprite's lower anchor.
     const groundY = Math.max(50, Math.min(600, rawY + 20));
-    if (x >= GOAL_BUILD_LIMIT) return toast('A zászló körül szabadon kell hagyni a célzónát!');
     const type = selectedBuildType;
+    const placementError = getBuildPlacementError(type, x, groundY);
+    if (placementError) return toast(placementError);
     socket.emit('placeBuild', { type, x, groundY }, result => {
       if (!result?.ok) toast(result?.error || 'Nem sikerült építeni.');
       else toast('Elhelyezve! Még építhetsz, amíg van aranyad és időd.');
@@ -307,13 +314,36 @@ function updateGameChrome() {
   const notice = $('phaseCenterNotice');
   if (notice) {
     const building = roomState.phase === 'build';
-    notice.classList.toggle('hidden', !building);
+    const isWaitingForOther = building && !!builder && builder.id !== socket.id;
+    const turnKey = building && builder ? `${roomState.code}:${roomState.roundNo}:${builder.id}` : null;
     const title = $('phaseCenterTitle');
     const subtitle = $('phaseCenterSubtitle');
     const icon = $('phaseCenterIcon');
-    if (title) title.textContent = building ? `${builder?.name || 'A következő játékos'} MOST ÉPÍTKEZIK` : '';
-    if (subtitle) subtitle.textContent = building ? (builder?.id === socket.id ? `Te vagy soron! ${me?.gold ?? 0} aranyad van — több tárgyat is lerakhatsz.` : `Most ${builder?.name || 'egy játékos'} köre van. Építkezési idő: ${roomState.settings?.buildSeconds || 30} mp.`) : '';
-    if (icon) icon.textContent = builder?.id === socket.id ? '🔨' : '🛠️';
+    if (!building || !builder) {
+      notice.classList.add('hidden');
+      if (buildNoticeTimer) clearTimeout(buildNoticeTimer);
+      buildNoticeTimer = null;
+      buildNoticeTurnKey = null;
+    } else {
+      if (title) title.textContent = `${builder.name || 'A következő játékos'} MOST ÉPÍTKEZIK`;
+      if (subtitle) subtitle.textContent = `Most ${builder.name || 'egy játékos'} köre van. Építkezési idő: ${roomState.settings?.buildSeconds || 30} mp.`;
+      if (icon) icon.textContent = '🔨';
+      // The active builder never sees this big banner. Other players see it for
+      // two seconds only when a new player's building turn starts.
+      if (!isWaitingForOther) {
+        notice.classList.add('hidden');
+        if (buildNoticeTimer) clearTimeout(buildNoticeTimer);
+        buildNoticeTimer = null;
+        buildNoticeTurnKey = turnKey;
+      } else if (turnKey !== buildNoticeTurnKey) {
+        if (buildNoticeTimer) clearTimeout(buildNoticeTimer);
+        buildNoticeTurnKey = turnKey;
+        notice.classList.remove('hidden');
+        buildNoticeTimer = setTimeout(() => {
+          if (buildNoticeTurnKey === turnKey) notice.classList.add('hidden');
+        }, 2000);
+      }
+    }
   }
 }
 function updateScoreList() {
@@ -353,10 +383,18 @@ function updateBuildControls() {
 }
 
 const CANVAS_W = 1100, CANVAS_H = 620, GROUND_Y = 430, PLAYER_H = 54, PLAYER_HALF_W = 15;
-// A clear landing/approach lane around the finish flag. Objects can be placed
-// anywhere else, including in mid-air, but never where they could seal the goal.
-const GOAL_SAFE_LEFT = 910;
-const GOAL_BUILD_LIMIT = GOAL_SAFE_LEFT - 28; // keep the whole object outside the goal corridor
+// A small square around the flag stays empty, rather than blocking a full-height lane.
+const GOAL_SAFE_ZONE = { left: 1000, right: 1088, top: 296, bottom: 390 };
+function rectanglesOverlap(a, b, gap = 0) {
+  return a.left < b.right + gap && a.right > b.left - gap && a.top < b.bottom + gap && a.bottom > b.top - gap;
+}
+function getBuildPlacementError(type, x, groundY) {
+  const candidate = getObstacleBounds({ type, x, groundY });
+  if (rectanglesOverlap(candidate, GOAL_SAFE_ZONE)) return 'A zászló körüli kis négyzetet szabadon kell hagyni!';
+  const other = (roomState?.obstacles || []).find(o => rectanglesOverlap(candidate, getObstacleBounds(o), 1));
+  if (other) return 'Itt már van egy tárgy — ne rakd egymásra az építményeket!';
+  return '';
+}
 const PLATFORMS = [
   { x: 0,   width: 290, top: 430 },
   { x: 324, width: 128, top: 475 },
@@ -437,9 +475,11 @@ function physicsStep(dt, now) {
   // frame can't randomly eat the jump input on slower machines.
   if (jumpQueuedUntil && now > jumpQueuedUntil) jumpQueuedUntil = 0;
   if (jumpQueuedUntil && (motion.grounded || now <= motion.coyoteUntil)) {
-    motion.vy = -625;
+    // Holding W gives the existing full-height jump; a quick tap makes a lower hop.
+    motion.vy = jumpHeld ? JUMP_FULL_POWER : JUMP_TAP_POWER;
     motion.grounded = false;
     motion.jumping = true;
+    jumpLaunchedByW = true;
     jumpQueuedUntil = 0;
     motion.coyoteUntil = 0;
   }
@@ -498,6 +538,7 @@ function physicsStep(dt, now) {
         feetY = landing.top;
         motion.vy = 0;
         motion.grounded = true;
+        jumpLaunchedByW = false;
         motion.coyoteUntil = now + COYOTE_TIME_MS;
       }
     } else {
@@ -525,7 +566,7 @@ function physicsStep(dt, now) {
     motion.y = 0; motion.vy = 0; motion.grounded = true;
     motion.moving = false; motion.jumping = false; motion.coyoteUntil = 0;
     motion.pauseUntil = now + 170;
-    jumpQueuedUntil = 0;
+    jumpQueuedUntil = 0; jumpLaunchedByW = false; jumpHeld = false;
     socket.emit('fellOffCourse');
     pushLocalMessage('💦 Leestél a pályáról — visszakerültél a rajthoz!');
     return;
@@ -543,6 +584,7 @@ function physicsStep(dt, now) {
       motion.vy = -700;
       motion.grounded = false;
       motion.jumping = true;
+      jumpLaunchedByW = false;
       motion.coyoteUntil = 0;
       socket.emit('hitHazard', { id: o.id });
     } else if (['saw','spikes','barrel'].includes(o.type)) {
@@ -587,11 +629,11 @@ function drawWorld(now) {
   drawGoal(ctx, length, now);
   if (isBuild) {
     ctx.save();
-    ctx.fillStyle = '#ff53631a'; ctx.fillRect(GOAL_BUILD_LIMIT, 0, length - GOAL_BUILD_LIMIT, CANVAS_H);
-    ctx.strokeStyle = '#ff6b7d'; ctx.lineWidth = 2; ctx.setLineDash([8, 6]);
-    ctx.beginPath(); ctx.moveTo(GOAL_BUILD_LIMIT, 0); ctx.lineTo(GOAL_BUILD_LIMIT, CANVAS_H); ctx.stroke(); ctx.setLineDash([]);
-    ctx.fillStyle = '#552638dd'; roundRect(ctx, GOAL_BUILD_LIMIT + 10, 60, 154, 24, 7); ctx.fill();
-    ctx.fillStyle = '#fff1f3'; ctx.font = 'bold 11px Nunito'; ctx.textAlign = 'center'; ctx.fillText('CÉLZÓNA – TILOS ÉPÍTENI', GOAL_BUILD_LIMIT + 87, 76);
+    ctx.fillStyle = '#ff536330'; ctx.fillRect(GOAL_SAFE_ZONE.left, GOAL_SAFE_ZONE.top, GOAL_SAFE_ZONE.right - GOAL_SAFE_ZONE.left, GOAL_SAFE_ZONE.bottom - GOAL_SAFE_ZONE.top);
+    ctx.strokeStyle = '#ff6b7d'; ctx.lineWidth = 2; ctx.setLineDash([6, 4]);
+    ctx.strokeRect(GOAL_SAFE_ZONE.left, GOAL_SAFE_ZONE.top, GOAL_SAFE_ZONE.right - GOAL_SAFE_ZONE.left, GOAL_SAFE_ZONE.bottom - GOAL_SAFE_ZONE.top); ctx.setLineDash([]);
+    ctx.fillStyle = '#552638e8'; roundRect(ctx, GOAL_SAFE_ZONE.left - 1, GOAL_SAFE_ZONE.top - 26, 165, 22, 7); ctx.fill();
+    ctx.fillStyle = '#fff1f3'; ctx.font = 'bold 11px Nunito'; ctx.textAlign = 'left'; ctx.fillText('🏁 CÉLZÓNA – TILOS', GOAL_SAFE_ZONE.left + 8, GOAL_SAFE_ZONE.top - 11);
     ctx.restore();
   }
   const latest = new Map((livePlayers.length ? livePlayers : roomState.players).map(p => [p.id, p]));
@@ -621,18 +663,20 @@ function drawWorld(now) {
   if (isBuild && selectedBuildType && mouseWorld && selectedBuildType !== 'shield') {
     const px = Math.max(28, Math.min(length - 28, mouseWorld.x));
     const ground = Math.max(50, Math.min(600, mouseWorld.y + 20));
-    const inGoalZone = px >= GOAL_BUILD_LIMIT;
+    const placementError = getBuildPlacementError(selectedBuildType, px, ground);
+    const blocked = !!placementError;
     ctx.save();
     ctx.globalAlpha = 0.72;
-    ctx.strokeStyle = inGoalZone ? '#ff6177' : '#ffe16a'; ctx.lineWidth = 2; ctx.setLineDash([5, 5]);
+    ctx.strokeStyle = blocked ? '#ff6177' : '#ffe16a'; ctx.lineWidth = 2; ctx.setLineDash([5, 5]);
     ctx.beginPath(); ctx.moveTo(px, Math.max(15, ground - 60)); ctx.lineTo(px, Math.min(CANVAS_H - 8, ground + 8)); ctx.stroke(); ctx.setLineDash([]);
-    ctx.globalAlpha = 0.68;
+    ctx.globalAlpha = 0.7;
     drawObstacle(ctx, { type: selectedBuildType, x: px, groundY: ground }, now);
     ctx.globalAlpha = 1;
-    ctx.strokeStyle = inGoalZone ? '#ff6177' : '#5be89b'; ctx.lineWidth = 2.5;
-    ctx.beginPath(); ctx.ellipse(px, ground + 2, 28, 8, 0, 0, Math.PI * 2); ctx.stroke();
-    ctx.fillStyle = inGoalZone ? '#651d31' : '#123d30'; roundRect(ctx, Math.max(4, Math.min(w - 112, px - 54)), Math.max(52, ground - 72), 108, 23, 8); ctx.fill();
-    ctx.fillStyle = inGoalZone ? '#fff0f2' : '#ddffe9'; ctx.font = 'bold 12px Nunito'; ctx.textAlign = 'center'; ctx.fillText(inGoalZone ? 'CÉLZÓNA – TILOS' : 'IDE ÉPÜL', Math.max(58, Math.min(w - 58, px)), Math.max(67, ground - 57));
+    ctx.strokeStyle = blocked ? '#ff6177' : '#5be89b'; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.ellipse(px, ground + 2, 29, 9, 0, 0, Math.PI * 2); ctx.stroke();
+    ctx.fillStyle = blocked ? '#651d31' : '#123d30'; roundRect(ctx, Math.max(4, Math.min(w - 135, px - 65)), Math.max(52, ground - 72), 130, 23, 8); ctx.fill();
+    ctx.fillStyle = blocked ? '#fff0f2' : '#ddffe9'; ctx.font = 'bold 11px Nunito'; ctx.textAlign = 'center';
+    ctx.fillText(blocked ? (placementError.includes('zászló') ? 'CÉLZÓNA – TILOS' : 'FOGLALT – TILOS') : 'IDE ÉPÜL', Math.max(68, Math.min(w - 68, px)), Math.max(67, ground - 57));
     ctx.restore();
   }
   if (!isBuild) {
@@ -642,35 +686,94 @@ function drawWorld(now) {
 }
 function roundRect(ctx,x,y,w,h,r) { ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
 function drawScenery(ctx, length, now, cam) {
+  // Richer layered cartoon landscape: sky glow, distant snowy peaks, forests,
+  // drifting clouds and animated water, all drawn locally without image files.
   const sky = ctx.createLinearGradient(0, 0, 0, CANVAS_H);
-  sky.addColorStop(0, '#58bdf8'); sky.addColorStop(0.55, '#bdeaff'); sky.addColorStop(1, '#f1fcff');
+  sky.addColorStop(0, '#41aaf0'); sky.addColorStop(0.37, '#8bd7fb');
+  sky.addColorStop(0.72, '#d0f4ff'); sky.addColorStop(1, '#f3fcff');
   ctx.fillStyle = sky; ctx.fillRect(0, 0, length, CANVAS_H);
-  // Distant hills and a few clouds give the single-screen course depth.
-  for (let i = 0; i < 6; i++) {
-    const x = i * 225 - 55;
-    ctx.fillStyle = i % 2 ? '#8ccac5' : '#a1d8d1';
-    ctx.beginPath(); ctx.moveTo(x - 70, 430); ctx.lineTo(x + 45, 225 + (i % 3) * 22); ctx.lineTo(x + 180, 430); ctx.closePath(); ctx.fill();
-    ctx.fillStyle = '#7fbdad'; ctx.beginPath(); ctx.moveTo(x + 65, 430); ctx.lineTo(x + 170, 270 + (i % 2) * 18); ctx.lineTo(x + 300, 430); ctx.closePath(); ctx.fill();
+
+  const glow = ctx.createRadialGradient(900, 82, 8, 900, 82, 118);
+  glow.addColorStop(0, '#fff8c9cc'); glow.addColorStop(0.35, '#fff4b866'); glow.addColorStop(1, '#fff4b800');
+  ctx.fillStyle = glow; ctx.fillRect(770, 0, 260, 220);
+  ctx.fillStyle = '#fff7ca'; ctx.beginPath(); ctx.arc(900, 82, 26, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = '#fff3be66'; ctx.lineWidth = 2;
+  for (let i = 0; i < 12; i++) {
+    const a = i * Math.PI / 6 + now / 18000;
+    ctx.beginPath(); ctx.moveTo(900 + Math.cos(a) * 34, 82 + Math.sin(a) * 34);
+    ctx.lineTo(900 + Math.cos(a) * (44 + (i % 2) * 7), 82 + Math.sin(a) * (44 + (i % 2) * 7)); ctx.stroke();
   }
-  ctx.fillStyle = '#fff5b5'; ctx.beginPath(); ctx.arc(955, 75, 27, 0, Math.PI * 2); ctx.fill();
-  for (let i = 0; i < 4; i++) {
-    const x = 90 + i * 285 + Math.sin(now / 2500 + i) * 10; const y = 65 + i % 2 * 45;
-    ctx.fillStyle = '#ffffffb8'; ctx.beginPath(); ctx.ellipse(x, y, 30, 12, 0, 0, Math.PI * 2); ctx.ellipse(x + 19, y - 9, 21, 16, 0, 0, Math.PI * 2); ctx.ellipse(x + 41, y, 27, 11, 0, 0, Math.PI * 2); ctx.fill();
+
+  // Far blue mountain range with snowy peaks.
+  for (let i = 0; i < 8; i++) {
+    const x = i * 165 - 65;
+    const peakY = 174 + (i % 3) * 27;
+    ctx.fillStyle = i % 2 ? '#8bb7d5' : '#a0c9de';
+    ctx.beginPath(); ctx.moveTo(x - 55, 440); ctx.lineTo(x + 40, peakY); ctx.lineTo(x + 94, peakY + 54); ctx.lineTo(x + 143, 440); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#eaf8ff';
+    ctx.beginPath(); ctx.moveTo(x + 24, peakY + 29); ctx.lineTo(x + 40, peakY); ctx.lineTo(x + 59, peakY + 30); ctx.lineTo(x + 48, peakY + 25); ctx.lineTo(x + 40, peakY + 35); ctx.lineTo(x + 33, peakY + 26); ctx.closePath(); ctx.fill();
   }
-  // Water below the islands.
-  const water = ctx.createLinearGradient(0, 492, 0, CANVAS_H); water.addColorStop(0, '#39bde8'); water.addColorStop(1, '#1474be');
+  // Middle green hills, offset from the mountain layer.
+  const hillGrad = ctx.createLinearGradient(0, 270, 0, 485);
+  hillGrad.addColorStop(0, '#75bf9e'); hillGrad.addColorStop(1, '#398f76');
+  ctx.fillStyle = hillGrad; ctx.beginPath(); ctx.moveTo(0, 450);
+  for (let x = 0; x <= length + 30; x += 30) ctx.lineTo(x, 360 + Math.sin(x * 0.008) * 28 + Math.sin(x * 0.021) * 13);
+  ctx.lineTo(length, 500); ctx.lineTo(0, 500); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#4f9e73'; ctx.beginPath(); ctx.moveTo(0, 472);
+  for (let x = 0; x <= length + 30; x += 26) ctx.lineTo(x, 405 + Math.sin(x * 0.011 + 1.7) * 23 + Math.sin(x * 0.027) * 10);
+  ctx.lineTo(length, 510); ctx.lineTo(0, 510); ctx.closePath(); ctx.fill();
+
+  // Distant forest silhouettes, with varied tree heights and highlights.
+  for (let i = 0; i < 37; i++) {
+    const x = i * 32 - 8;
+    const y = 438 + Math.sin(i * 1.7) * 15;
+    const h = 28 + ((i * 17) % 27);
+    ctx.fillStyle = i % 3 === 0 ? '#2e806b' : (i % 2 ? '#347f6b' : '#3d9270');
+    ctx.beginPath(); ctx.moveTo(x - 15, y); ctx.lineTo(x, y - h); ctx.lineTo(x + 16, y); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#72ba8a88'; ctx.beginPath(); ctx.moveTo(x - 7, y - h * .36); ctx.lineTo(x, y - h); ctx.lineTo(x + 7, y - h * .38); ctx.closePath(); ctx.fill();
+  }
+
+  // Three layered clouds drift slowly so the background has subtle motion.
+  for (let i = 0; i < 5; i++) {
+    const x = ((i * 267 + (now / 85) % (length + 150)) % (length + 150)) - 70;
+    const y = 72 + (i % 3) * 54;
+    ctx.fillStyle = '#ffffffad';
+    ctx.beginPath(); ctx.ellipse(x, y + 9, 32, 12, 0, 0, Math.PI * 2); ctx.ellipse(x + 22, y - 2, 24, 20, 0, 0, Math.PI * 2); ctx.ellipse(x + 48, y + 8, 30, 13, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#ffffff4a'; ctx.beginPath(); ctx.ellipse(x + 20, y - 7, 13, 5, -.2, 0, Math.PI * 2); ctx.fill();
+  }
+  // Tiny bird silhouettes.
+  ctx.strokeStyle = '#286b98aa'; ctx.lineWidth = 2;
+  for (let i = 0; i < 3; i++) {
+    const x = 155 + i * 24 + Math.sin(now / 1200 + i) * 4, y = 145 + (i % 2) * 10;
+    ctx.beginPath(); ctx.moveTo(x - 7, y + 3); ctx.quadraticCurveTo(x - 3, y - 3, x, y + 2); ctx.quadraticCurveTo(x + 5, y - 3, x + 9, y + 2); ctx.stroke();
+  }
+
+  // Blue water with animated highlights and a few gentle ripples.
+  const water = ctx.createLinearGradient(0, 490, 0, CANVAS_H);
+  water.addColorStop(0, '#45d3ee'); water.addColorStop(0.22, '#26a8df'); water.addColorStop(1, '#125d9c');
   ctx.fillStyle = water; ctx.fillRect(0, 500, length, CANVAS_H - 500);
-  ctx.strokeStyle = '#b8f5ff'; ctx.lineWidth = 3;
-  for (let i = 0; i < 11; i++) {
-    const x = (i * 113 + (now / 60) % 113) - 20; const y = 520 + (i % 3) * 24;
-    ctx.beginPath(); ctx.moveTo(x, y); ctx.quadraticCurveTo(x + 15, y - 5, x + 30, y); ctx.stroke();
+  ctx.fillStyle = '#b9f5ff1c';
+  for (let i = 0; i < 9; i++) {
+    const x = i * 137 + 12, y = 535 + (i % 3) * 25;
+    ctx.beginPath(); ctx.ellipse(x, y, 44, 6, 0, 0, Math.PI * 2); ctx.fill();
   }
+  ctx.strokeStyle = '#baf6ff'; ctx.lineWidth = 2.4;
+  for (let i = 0; i < 16; i++) {
+    const x = ((i * 89 + now / (i % 2 ? 50 : 65)) % (length + 60)) - 30;
+    const y = 516 + (i % 4) * 24;
+    ctx.beginPath(); ctx.moveTo(x, y); ctx.quadraticCurveTo(x + 12, y - 4, x + 25, y); ctx.quadraticCurveTo(x + 35, y + 3, x + 45, y); ctx.stroke();
+  }
+  // Soft reflections below the islands.
+  ctx.fillStyle = '#e9ffff33';
+  for (let i = 0; i < 10; i++) ctx.fillRect(i * 119 + (now / 45 % 35), 508 + (i % 4) * 24, 28 + (i % 3) * 8, 2);
+
   for (const p of PLATFORMS) drawPlatform(ctx, p, now);
   // Start marker.
   ctx.fillStyle = '#e9f5ff'; ctx.fillRect(17, PLATFORMS[0].top - 36, 4, 36);
   ctx.fillStyle = '#17334c'; roundRect(ctx, 13, PLATFORMS[0].top - 57, 58, 18, 5); ctx.fill();
   ctx.fillStyle = '#fff'; ctx.font = '900 11px Nunito'; ctx.textAlign = 'center'; ctx.fillText('RAJT', 42, PLATFORMS[0].top - 44);
 }
+
 function drawPlatform(ctx, p, now) {
   const depth = 30;
   ctx.fillStyle = '#8a5734'; ctx.fillRect(p.x, p.top, p.width, depth);
@@ -816,6 +919,7 @@ window.addEventListener('keydown', e => {
   if (e.code === 'Space') { e.preventDefault(); return; } // W is the only jump key.
   if (e.code === 'KeyW') {
     e.preventDefault();
+    jumpHeld = true;
     if (!e.repeat) jumpQueuedUntil = performance.now() + JUMP_BUFFER_MS;
     return;
   }
@@ -824,9 +928,15 @@ window.addEventListener('keydown', e => {
 });
 window.addEventListener('keyup', e => {
   keys[e.code] = false;
+  if (e.code === 'KeyW') {
+    jumpHeld = false;
+    // Release early to shorten the jump. Holding W keeps the existing maximum height.
+    if (jumpLaunchedByW && motion.vy < JUMP_TAP_POWER) motion.vy = JUMP_TAP_POWER;
+    jumpLaunchedByW = false;
+  }
   if (e.code === 'Tab') $('scoreOverlay')?.classList.add('hidden');
 });
-window.addEventListener('blur', () => { keys = Object.create(null); jumpQueuedUntil = 0; $('scoreOverlay')?.classList.add('hidden'); });
+window.addEventListener('blur', () => { keys = Object.create(null); jumpQueuedUntil = 0; jumpHeld = false; jumpLaunchedByW = false; $('scoreOverlay')?.classList.add('hidden'); });
 
 // Keep the timer fresh even in the lobby-to-game transitions.
 setInterval(() => { if (currentScreen === 'game' && roomState) updateGameChrome(); }, 250);

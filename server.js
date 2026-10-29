@@ -9,7 +9,7 @@ const io = new Server(server, { cors: { origin: '*' } });
 const PORT = Number(process.env.PORT || 3000);
 const MAP_LENGTH = 1100;
 const GROUND_Y = 430;
-const GOAL_SAFE_LEFT = 910;
+const GOAL_SAFE_ZONE = { left: 1000, right: 1088, top: 296, bottom: 390 };
 const PLATFORMS = [
   { x: 0, width: 290, top: 430 },
   { x: 324, width: 128, top: 475 },
@@ -47,6 +47,17 @@ function makeCode() {
   return code;
 }
 function clamp(n, min, max) { return Math.max(min, Math.min(max, n)); }
+function obstacleBounds(type, x, groundY) {
+  if (type === 'crate') return { left: x - 21, right: x + 21, top: groundY - 39, bottom: groundY };
+  if (type === 'saw') return { left: x - 25, right: x + 25, top: groundY - 47, bottom: groundY + 2 };
+  if (type === 'spikes') return { left: x - 27, right: x + 27, top: groundY - 30, bottom: groundY + 4 };
+  if (type === 'spring') return { left: x - 26, right: x + 26, top: groundY - 40, bottom: groundY + 4 };
+  if (type === 'barrel') return { left: x - 23, right: x + 23, top: groundY - 37, bottom: groundY + 3 };
+  return { left: x - 20, right: x + 20, top: groundY - 30, bottom: groundY + 3 };
+}
+function overlapsRect(a, b, gap = 0) {
+  return a.left < b.right + gap && a.right > b.left - gap && a.top < b.bottom + gap && a.bottom > b.top - gap;
+}
 function getRoom(socket) {
   const code = socket.data.roomCode;
   return code ? rooms.get(code) : null;
@@ -380,9 +391,14 @@ io.on('connection', socket => {
       const rawGroundY = Number(payload.groundY);
       const x = clamp(Math.round(Number.isFinite(rawX) ? rawX : 28), 28, MAP_LENGTH - 28);
       const groundY = clamp(Math.round(Number.isFinite(rawGroundY) ? rawGroundY : GROUND_Y), 50, 600);
-      // Leave a clear corridor at the finish flag in every vertical position.
-      // This is server-enforced too, so clients cannot block the goal with an airborne object.
-      if (x + 28 >= GOAL_SAFE_LEFT) return ack({ ok: false, error: 'A zászló körül szabadon kell hagyni a célzónát!' });
+      // Keep only a small square around the goal flag clear, allowing building
+      // elsewhere on the course, in mid-air or over water.
+      const candidateBounds = obstacleBounds(type, x, groundY);
+      if (overlapsRect(candidateBounds, GOAL_SAFE_ZONE)) return ack({ ok: false, error: 'A zászló körüli kis négyzetet szabadon kell hagyni!' });
+      // Every object has a matching hitbox; reject placements that would overlap
+      // an existing object, so players cannot stack traps or crates on each other.
+      const collides = room.obstacles.some(o => overlapsRect(candidateBounds, obstacleBounds(o.type, Number(o.x) || 0, Number.isFinite(o.groundY) ? o.groundY : GROUND_Y), 1));
+      if (collides) return ack({ ok: false, error: 'Itt már van egy tárgy — ne rakd egymásra az építményeket!' });
       p.gold -= item.cost;
       room.obstacles.push({ id: `${room.roundNo}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, type, x, groundY, ownerId: p.id, ownerName: p.name, createdRound: room.roundNo });
       pushChat(room, 'RENDSZER', `🔨 ${p.name} épített egyet: ${item.name}.`, true);
