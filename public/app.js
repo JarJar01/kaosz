@@ -15,13 +15,16 @@ for (const animalType of Object.keys(ANIMALS)) {
   image.src = `/assets/animals/${animalType}.svg`;
   ANIMAL_SPRITES[animalType] = image;
 }
+const MAPS = { meadow: '🌳 Kezdő mező', moon: '🌙 Hold', mars: '🔴 Mars', city: '🌆 Város' };
 const ITEMS = [
   { type: 'crate', name: 'Csapdaláda', icon: '📦', price: 10, desc: 'Ugorjátok át!' },
   { type: 'saw', name: 'Forgó fűrész', icon: '⚙️', price: 25, desc: 'Halálos csapda' },
   { type: 'spikes', name: 'Tüskék', icon: '🔺', price: 20, desc: 'Egy rossz lépés…' },
   { type: 'spring', name: 'Rugós kilövő', icon: '🌀', price: 30, desc: 'Magasra repít' },
   { type: 'barrel', name: 'Guruló hordó', icon: '🛢️', price: 25, desc: 'Veszélyes akadály' },
-  { type: 'shield', name: 'Pajzs', icon: '🛡️', price: 20, desc: 'Egy találatot véd' }
+  { type: 'shield', name: 'Pajzs', icon: '🛡️', price: 20, desc: 'Egy csapdát kivéd' },
+  { type: 'lifebuoy', name: 'Mentőöv', icon: '🛟', price: 30, desc: 'Egy leesést megúszol' },
+  { type: 'jumpboots', name: 'Ugrócsizma', icon: '🥾', price: 35, desc: 'A következő ugrásod magasabb' }
 ];
 let roomState = null;
 let livePlayers = [];
@@ -38,9 +41,17 @@ let keys = Object.create(null);
 let lastHitAt = Object.create(null);
 let lastDeathCount = 0;
 let lastShieldCount = 0;
+let lastLifebuoyCount = 0;
+let lastChromeUpdate = 0;
+let jumpBoostActiveThisJump = false;
 let lastFallAt = 0;
 let physicsAccumulator = 0;
 let remoteVisuals = new Map();
+let sceneCache = { theme: null, canvas: null };
+let lastObservedRoundKey = '';
+let lastRoundBannerUntil = 0;
+let serverClockOffset = 0;
+function synchronizedNow() { return Date.now() + serverClockOffset; }
 let motion = { x: 45, y: 0, vy: 0, face: 1, moving: false, jumping: false, grounded: true, coyoteUntil: 0, pauseUntil: 0 };
 let mouseWorld = null;
 let jumpQueuedUntil = 0;
@@ -87,7 +98,15 @@ socket.on('connect_error', () => { $('connectionLabel').textContent = 'Kapcsoló
 socket.on('roomState', next => {
   const priorPhase = roomState?.phase;
   const priorCode = roomState?.code;
+  const priorRoundNo = roomState?.roundNo;
   roomState = next;
+  if (Number.isFinite(Number(next.serverNow))) serverClockOffset = Number(next.serverNow) - Date.now();
+  const roundKey = `${next.code}:${next.roundNo}`;
+  if (next.phase === 'race' && next.roundNo !== priorRoundNo && roundKey !== lastObservedRoundKey) {
+    lastObservedRoundKey = roundKey;
+    lastRoundBannerUntil = next.roundNo === next.settings.rounds ? synchronizedNow() + 4700 : 0;
+  }
+  if (priorCode !== next.code) { sceneCache = { theme: null, canvas: null }; lastObservedRoundKey = ''; lastRoundBannerUntil = 0; }
   livePlayers = (next.players || []).map(p => ({ ...p }));
   if (priorCode !== next.code) selectedBuildType = null;
   if (next.phase === 'lobby') {
@@ -104,9 +123,9 @@ socket.on('roomState', next => {
       if (next.phase === 'race') {
         const me = next.players.find(p => p.id === socket.id);
         motion = { x: me?.x ?? me?.startX ?? 45, y: me?.y ?? 0, vy: 0, face: 1, moving: false, jumping: false, grounded: true, coyoteUntil: 0, pauseUntil: 0 };
-        lastDeathCount = me?.deaths ?? 0; lastShieldCount = me?.shields ?? 0;
+        lastDeathCount = me?.deaths ?? 0; lastShieldCount = me?.shields ?? 0; lastLifebuoyCount = me?.lifebuoys ?? 0;
         lastFallAt = 0; lastSendAt = 0;
-        jumpQueuedUntil = 0; jumpHeld = false; jumpLaunchedByW = false;
+        jumpQueuedUntil = 0; jumpHeld = false; jumpLaunchedByW = false; jumpBoostActiveThisJump = false;
       }
       if (next.phase !== 'build' || next.currentBuilderId !== socket.id) selectedBuildType = null;
       renderGame();
@@ -132,7 +151,9 @@ socket.on('playersMoved', positions => {
     // later than the local physics frame). Only snap on explicit server teleports.
     const deathCount = Number(me.deaths) || 0;
     const shieldCount = Number(me.shields) || 0;
-    const respawned = deathCount > lastDeathCount;
+    const lifebuoyCount = Number(me.lifebuoys) || 0;
+    const rescued = lifebuoyCount < lastLifebuoyCount;
+    const respawned = deathCount > lastDeathCount || rescued;
     const shieldKnockback = shieldCount < lastShieldCount;
     if (respawned || shieldKnockback) {
       motion.x = Number.isFinite(Number(me.x)) ? Number(me.x) : (getMe()?.startX ?? 36);
@@ -143,9 +164,9 @@ socket.on('playersMoved', positions => {
       motion.jumping = shieldKnockback && !respawned;
       motion.coyoteUntil = 0;
       motion.pauseUntil = performance.now() + (respawned ? 170 : 90);
-      jumpQueuedUntil = 0; jumpLaunchedByW = false;
+      jumpQueuedUntil = 0; jumpLaunchedByW = false; jumpBoostActiveThisJump = false;
     }
-    lastDeathCount = deathCount; lastShieldCount = shieldCount;
+    lastDeathCount = deathCount; lastShieldCount = shieldCount; lastLifebuoyCount = lifebuoyCount;
     if (me.finished) { motion.x = me.x; motion.y = me.y || 0; motion.vy = 0; motion.moving = false; motion.grounded = true; motion.jumping = false; }
   }
   updateScoreList();
@@ -203,7 +224,7 @@ function renderLobby() {
         <div><label class="form-label" for="setTime">Versenyidő (másodperc)</label><input class="form-input" id="setTime" type="number" min="15" max="600" value="${s.roundSeconds}" ${!isHost ? 'disabled' : ''}></div>
         <div><label class="form-label" for="setBuildTime">Építkezési idő / játékos (mp)</label><input class="form-input" id="setBuildTime" type="number" min="5" max="180" value="${s.buildSeconds || 30}" ${!isHost ? 'disabled' : ''}></div>
         <div><label class="form-label" for="setRounds">Körök száma</label><input class="form-input" id="setRounds" type="number" min="1" max="12" value="${s.rounds}" ${!isHost ? 'disabled' : ''}></div>
-        
+        <div class="map-setting"><label class="form-label" for="setMapTheme">Pályavilág</label><select class="form-input" id="setMapTheme" ${!isHost ? 'disabled' : ''}>${Object.entries(MAPS).map(([key,label]) => `<option value="${key}" ${(s.mapTheme || 'meadow')===key?'selected':''}>${label}</option>`).join('')}</select></div>
       </div>
       ${isHost ? '<button class="secondary-button full" id="saveSettingsBtn">Beállítások mentése</button>' : ''}
       <div class="setting-note">A versenyidő lejártakor a célba nem érők nem kapnak helyezési pontot. Az építkezési időt játékosonként a szobagazda állítja. A saját időd alatt annyi tárgyat építhetsz, amennyit az aranyad enged; a végén a tárgyak a pályán maradnak.</div>
@@ -228,7 +249,7 @@ function renderLobby() {
     $('saveSettingsBtn').addEventListener('click', () => {
       emitAck('updateSettings', {
         maxPlayers: Number($('setMaxPlayers').value), startGold: Number($('setGold').value),
-        roundSeconds: Number($('setTime').value), buildSeconds: Number($('setBuildTime').value), rounds: Number($('setRounds').value)
+        roundSeconds: Number($('setTime').value), buildSeconds: Number($('setBuildTime').value), rounds: Number($('setRounds').value), mapTheme: $('setMapTheme').value
       }, 'Beállítások elmentve.');
     });
     $('startGameBtn').addEventListener('click', () => emitAck('startGame', {}, 'A verseny indul!'));
@@ -241,11 +262,13 @@ function renderGame() {
   selectedBuildType = roomState.phase === 'build' && roomState.currentBuilderId === socket.id ? selectedBuildType : null;
   screenGame.innerHTML = `
     <div class="game-top"><div class="game-title"><h1>🐾 ÁllatKáosz</h1><p id="gameStatusText">${escapeHtml(roomState.statusMessage || '')}</p></div><div class="game-statuses"><div class="status-chip">🏁 Kör <b id="roundChip">${roomState.roundNo}/${roomState.settings.rounds}</b></div><div class="status-chip">🪙 Arany <b id="myGoldValue">${getMe()?.gold ?? 0}</b></div><button class="ghost-button" id="exitGameBtn">Kilépés</button></div></div>
-    <div class="game-layout"><section class="game-main-col"><div class="world-frame"><canvas id="worldCanvas" width="1100" height="620" tabindex="0" aria-label="Az egyetlen közös akadálypálya. Kattints a pályára, majd W ugrás"></canvas><div class="canvas-overlay"><div class="canvas-pill" id="canvasModeLabel">🏃 VERSENY</div><div class="canvas-timer" id="canvasTimerBox"><small id="inCanvasTimerLabel">VERSENYIDŐ</small><strong id="inCanvasTimer">00:45</strong></div><div class="canvas-pill right">🏁 <strong>Érd el a zászlót!</strong> · TAB: pontok</div></div>
+    <div class="game-layout"><section class="game-main-col"><div class="world-frame"><canvas id="worldCanvas" width="1100" height="620" tabindex="0" aria-label="Az egyetlen közös akadálypálya. Kattints a pályára, majd W ugrás"></canvas><div class="canvas-overlay"><div class="canvas-pill" id="canvasModeLabel">🏃 VERSENY</div><div class="canvas-timer" id="canvasTimerBox"><small id="inCanvasTimerLabel">VERSENYIDŐ</small><strong id="inCanvasTimer">00:45</strong></div><div class="canvas-pill right">🌍 <strong id="canvasMapName">${escapeHtml(MAPS[roomState.settings?.mapTheme || 'meadow'] || 'Kezdő mező')}</strong> · 🏁 Cél · TAB: pontok</div></div>
       <div class="phase-center-notice hidden" id="phaseCenterNotice"><span class="phase-center-icon" id="phaseCenterIcon">🔨</span><div><strong id="phaseCenterTitle">XY MOST ÉPÍTKEZIK</strong><span id="phaseCenterSubtitle">Válassz tárgyakat, és használd fel az aranyad!</span></div></div>
+      <div class="race-countdown hidden" id="raceCountdown" aria-live="polite"><strong id="raceCountdownNumber">3</strong><span id="raceCountdownLabel">Felkészülni!</span></div>
+      <div class="last-round-banner hidden" id="lastRoundBanner">🔥 UTOLSÓ KÖR! GYERÜNK, VADÁLLATOK! 🔥</div>
       <section class="score-overlay hidden" id="scoreOverlay" aria-label="Pontok és arany"><div class="score-overlay-head"><strong>🏆 Pontok és arany</strong><button type="button" id="closeScoreButton" aria-label="Bezárás">×</button></div><div class="score-list" id="scoreList"></div><small>Engedd fel a TAB billentyűt az ablak bezárásához.</small></section>
     </div>
-      <div class="game-instructions" id="gameInstructions"><span><b>IRÁNYÍTÁS</b> <span class="keycap">A</span><span class="keycap">D</span> / <span class="keycap">←</span><span class="keycap">→</span> futás · <span class="keycap">W</span> ugrás · <span class="keycap">TAB</span> pontok</span><span id="progressInstruction">Aranyat kapsz a megtett útért is.</span></div>
+      <div class="game-instructions" id="gameInstructions"><span><b>IRÁNYÍTÁS</b> <span class="keycap">A</span><span class="keycap">D</span> / <span class="keycap">←</span><span class="keycap">→</span> futás · <span class="keycap">W</span> ugrás (tartsd nyomva a nagyobb ugráshoz) · <span class="keycap">TAB</span> pontok</span><span id="progressInstruction">Aranyat kapsz a megtett útért is.</span></div>
     </section><aside class="side-column"><section class="panel build-panel hidden" id="buildPanel"></section><section class="panel side-card chat-card"><h3>💬 Játékchat</h3><div class="chat-messages" id="chatMessages"></div><form class="chat-entry" id="chatForm"><input id="chatInput" maxlength="260" placeholder="Üzenet a csapatnak…" autocomplete="off"><button type="submit" aria-label="Küldés">➤</button></form></section><section class="panel side-card"><h3>🧰 A táskád</h3><div id="inventoryInfo" class="muted" style="font-size:11px;line-height:1.7"></div></section></aside></div>`;
   $('exitGameBtn').addEventListener('click', () => { socket.emit('leaveRoom'); roomState = null; livePlayers = []; currentRenderedPhase = null; switchScreen('home'); });
   $('chatForm').addEventListener('submit', e => { e.preventDefault(); const text = $('chatInput').value.trim(); if (!text) return; socket.emit('chat', { text }, result => { if (!result?.ok) toast(result?.error || 'Az üzenet nem küldhető el.'); }); $('chatInput').value = ''; $('chatInput').blur(); $('worldCanvas')?.focus({ preventScroll: true }); });
@@ -298,16 +321,30 @@ function updateGameChrome() {
   const round = $('roundChip'); if (round) round.textContent = `${roomState.roundNo}/${roomState.settings.rounds}`;
   const gold = $('myGoldValue'); if (gold) gold.textContent = me?.gold ?? 0;
   const label = $('canvasModeLabel'); if (label) label.textContent = roomState.phase === 'build' ? '🔨 ÉPÍTKEZÉS' : '🏃 VERSENY';
+  const mapLabel = $('canvasMapName'); if (mapLabel) mapLabel.textContent = MAPS[roomState.settings?.mapTheme || 'meadow'] || MAPS.meadow;
   const instr = $('progressInstruction'); if (instr) instr.textContent = roomState.phase === 'build' ? 'A saját időd alatt több tárgyat is építhetsz, amíg van aranyad.' : 'Minden 250 megtett egység után +4 arany.';
-  const inv = $('inventoryInfo'); if (inv && me) inv.innerHTML = `🛡️ Pajzsok: <b style="color:#ffd66c">${me.shields}</b><br>💀 Halálok: <b>${me.deaths}</b><br>🪙 Arany: <b style="color:#ffd66c">${me.gold}</b><br>🏆 Összpont: <b>${me.score}</b>`;
+  const inv = $('inventoryInfo'); if (inv && me) inv.innerHTML = `🛡️ Pajzsok: <b style="color:#ffd66c">${me.shields || 0}</b><br>🛟 Mentőöv: <b style="color:#8de5ff">${me.lifebuoys || 0}</b><br>🥾 Ugrócsizma: <b style="color:#caa7ff">${me.jumpBoosts || 0}</b><br>💀 Halálok: <b>${me.deaths}</b><br>🪙 Arany: <b style="color:#ffd66c">${me.gold}</b><br>🏆 Összpont: <b>${me.score}</b>`;
   const timer = $('inCanvasTimer');
   let seconds = 0;
-  if (roomState.phase === 'race' && roomState.roundDeadline) seconds = Math.max(0, Math.ceil((roomState.roundDeadline - Date.now()) / 1000));
-  else if (roomState.phase === 'build' && roomState.buildTurnEndsAt) seconds = Math.max(0, Math.ceil((roomState.buildTurnEndsAt - Date.now()) / 1000));
+  if (roomState.phase === 'race' && roomState.roundDeadline) seconds = Math.max(0, Math.ceil((roomState.roundDeadline - Math.max(synchronizedNow(), roomState.raceStartsAt || 0)) / 1000));
+  else if (roomState.phase === 'build' && roomState.buildTurnEndsAt) seconds = Math.max(0, Math.ceil((roomState.buildTurnEndsAt - synchronizedNow()) / 1000));
   if (timer) {
     timer.textContent = `${String(Math.floor(seconds / 60)).padStart(2,'0')}:${String(seconds % 60).padStart(2,'0')}`;
     timer.classList.toggle('urgent', seconds <= 8);
   }
+  const countdown = $('raceCountdown');
+  const countdownNumber = $('raceCountdownNumber');
+  const countdownLabel = $('raceCountdownLabel');
+  const startRemaining = roomState.phase === 'race' && roomState.raceStartsAt ? roomState.raceStartsAt - synchronizedNow() : 0;
+  if (countdown && startRemaining > 0) {
+    countdown.classList.remove('hidden');
+    if (startRemaining > 2650) { if (countdownNumber) countdownNumber.textContent = '3'; if (countdownLabel) countdownLabel.textContent = 'Felkészülni!'; }
+    else if (startRemaining > 1650) { if (countdownNumber) countdownNumber.textContent = '2'; if (countdownLabel) countdownLabel.textContent = 'Helyezkedj!'; }
+    else if (startRemaining > 600) { if (countdownNumber) countdownNumber.textContent = '1'; if (countdownLabel) countdownLabel.textContent = 'Mindjárt rajt!'; }
+    else { if (countdownNumber) countdownNumber.textContent = 'MEHET!'; if (countdownLabel) countdownLabel.textContent = 'Gyerünk, vadállatok!'; }
+  } else if (countdown) countdown.classList.add('hidden');
+  const lastRoundBanner = $('lastRoundBanner');
+  if (lastRoundBanner) lastRoundBanner.classList.toggle('hidden', !(roomState.phase === 'race' && synchronizedNow() < lastRoundBannerUntil));
   const timerLabel = $('inCanvasTimerLabel');
   const builder = roomState.players?.find(p => p.id === roomState.currentBuilderId);
   if (timerLabel) timerLabel.textContent = roomState.phase === 'build' ? `${builder?.name || 'ÉPÍTKEZÉS'} IDEJE` : 'VERSENYIDŐ';
@@ -350,7 +387,6 @@ function updateScoreList() {
   const el = $('scoreList'); if (!el || !roomState) return;
   const list = [...(livePlayers.length ? livePlayers : roomState.players)].sort((a,b)=>b.score-a.score || b.gold-a.gold);
   el.innerHTML = list.map((p,i)=>`<div class="score-row ${p.id===socket.id?'me':''}"><span class="score-rank">${i+1}</span><span class="score-animal">${ANIMALS[p.animal]?.emoji || '🐾'}</span><span class="score-name">${escapeHtml(p.name)}</span><span class="score-stats"><b>${p.score} p</b>🪙 ${p.gold}</span></div>`).join('');
-  updateGameChrome();
 }
 function updateChat() {
   const el = $('chatMessages'); if (!el || !roomState) return;
@@ -369,42 +405,58 @@ function updateBuildControls() {
     const selectedItem = ITEMS.find(item => item.type === selectedBuildType);
     if (!selectedItem || (me?.gold ?? 0) < selectedItem.price) selectedBuildType = null;
   }
-  const cards = ITEMS.map(item => `<button type="button" class="shop-item ${selectedBuildType===item.type?'selected':''}" data-item="${item.type}" ${!isMe || (me?.gold ?? 0) < item.price ? 'disabled' : ''}><span class="shop-icon">${item.icon}</span><strong>${item.name}</strong><small>🪙 ${item.price}</small></button>`).join('');
+  const cards = ITEMS.map(item => `<button type="button" class="shop-item ${selectedBuildType===item.type?'selected':''}" data-item="${item.type}" ${!isMe || (me?.gold ?? 0) < item.price ? 'disabled' : ''}><span class="shop-icon">${item.icon}</span><strong>${item.name}</strong><small>🪙 ${item.price}</small><span class="item-desc">${item.desc}</span></button>`).join('');
   const affordable = ITEMS.some(item => (me?.gold ?? 0) >= item.price);
   panel.innerHTML = `<div class="build-top"><div><h3>🔨 Építkezési fázis</h3><p>${isMe ? `Aranyad: ${me?.gold ?? 0} · Több tárgyat is lerakhatsz a saját időd alatt.` : `Most ${escapeHtml(builder?.name || 'egy játékos')} építkezik.`}</p></div><span class="build-turn-pill">${isMe?'TE JÖSSZ':'VÁRJ A SORODRA'}</span></div><div class="shop-grid">${cards}</div><div class="build-footer"><span class="build-help">Válaszd ki az ikont, majd kattints a pályára. Tárgyakat és pajzsot is vehetsz, amíg tart az időd és van aranyad.${isMe && !affordable ? ' Nincs elég aranyad új tárgyra — kihagyhatod a körödet.' : ''}</span>${isMe?'<button class="ghost-button" id="skipBuildBtn">Kész / Kihagyom →</button>':''}</div>`;
   panel.querySelectorAll('[data-item]').forEach(btn => btn.addEventListener('click', () => {
     const type = btn.dataset.item;
-    if (type === 'shield') {
+    if (['shield', 'lifebuoy', 'jumpboots'].includes(type)) {
       selectedBuildType = null;
-      socket.emit('placeBuild', { type: 'shield' }, result => { if (!result?.ok) toast(result?.error || 'Nem sikerült megvenni.'); else toast('Pajzs megvéve — folytathatod az építést!'); });
+      const labels = { shield: 'Pajzs megvéve!', lifebuoy: 'Mentőöv megvéve! Egy leesést túlélhetsz.', jumpboots: 'Ugrócsizma megvéve! A következő W-ugrásod magasabb lesz.' };
+      socket.emit('placeBuild', { type }, result => { if (!result?.ok) toast(result?.error || 'Nem sikerült megvenni.'); else toast(labels[type] || 'Segítség megvéve.'); });
     } else { selectedBuildType = type; updateBuildControls(); toast('Az akadály előnézete követi az egeret. Kattints oda, ahová építeni szeretnél.'); }
   }));
   if ($('skipBuildBtn')) $('skipBuildBtn').addEventListener('click', () => emitAck('skipBuild', {}, 'Építkezés befejezve.'));
 }
 
-const CANVAS_W = 1100, CANVAS_H = 620, GROUND_Y = 430, PLAYER_H = 54, PLAYER_HALF_W = 15;
-// A small square around the flag stays empty, rather than blocking a full-height lane.
-const GOAL_SAFE_ZONE = { left: 1000, right: 1088, top: 296, bottom: 390 };
+const CANVAS_W = 1100, CANVAS_H = 620, GROUND_Y = 430, PLAYER_H = 42, PLAYER_HALF_W = 11;
+// A compact protected rectangle around the finish flag, mirrored by the server.
+const GOAL_SAFE_ZONE = { left: 948, right: 1098, top: 250, bottom: 422 };
 function rectanglesOverlap(a, b, gap = 0) {
   return a.left < b.right + gap && a.right > b.left - gap && a.top < b.bottom + gap && a.bottom > b.top - gap;
 }
 function getBuildPlacementError(type, x, groundY) {
   const candidate = getObstacleBounds({ type, x, groundY });
-  if (rectanglesOverlap(candidate, GOAL_SAFE_ZONE)) return 'A zászló körüli kis négyzetet szabadon kell hagyni!';
+  if (rectanglesOverlap(candidate, GOAL_SAFE_ZONE)) return 'A zászló körüli védett négyzetet szabadon kell hagyni!';
   const other = (roomState?.obstacles || []).find(o => rectanglesOverlap(candidate, getObstacleBounds(o), 1));
   if (other) return 'Itt már van egy tárgy — ne rakd egymásra az építményeket!';
   return '';
 }
-const PLATFORMS = [
-  { x: 0,   width: 290, top: 430 },
-  { x: 324, width: 128, top: 475 },
-  { x: 475, width: 166, top: 395 },
-  { x: 665, width: 142, top: 428 },
-  { x: 830, width: 116, top: 470 },
-  { x: 958, width: 142, top: 390 }
-];
+const PLATFORM_LAYOUTS = {
+  meadow: [
+    { x: 0, width: 290, top: 430 }, { x: 324, width: 128, top: 475 },
+    { x: 475, width: 166, top: 395 }, { x: 665, width: 142, top: 428 },
+    { x: 830, width: 116, top: 470 }, { x: 958, width: 142, top: 390 }
+  ],
+  moon: [
+    { x: 0, width: 290, top: 430 }, { x: 315, width: 130, top: 405 },
+    { x: 470, width: 160, top: 360 }, { x: 660, width: 145, top: 410 },
+    { x: 825, width: 120, top: 375 }, { x: 958, width: 142, top: 390 }
+  ],
+  mars: [
+    { x: 0, width: 300, top: 430 }, { x: 330, width: 135, top: 455 },
+    { x: 490, width: 150, top: 395 }, { x: 670, width: 140, top: 445 },
+    { x: 835, width: 115, top: 400 }, { x: 958, width: 142, top: 390 }
+  ],
+  city: [
+    { x: 0, width: 300, top: 430 }, { x: 320, width: 130, top: 450 },
+    { x: 472, width: 160, top: 385 }, { x: 660, width: 150, top: 420 },
+    { x: 838, width: 112, top: 365 }, { x: 958, width: 142, top: 390 }
+  ]
+};
+function getPlatformLayout() { return PLATFORM_LAYOUTS[roomState?.settings?.mapTheme || 'meadow'] || PLATFORM_LAYOUTS.meadow; }
 function getSolidSurfaces() {
-  const surfaces = PLATFORMS.map((p, i) => ({ x: p.x, width: p.width, top: p.top, kind: 'platform', key: `platform-${i}` }));
+  const surfaces = getPlatformLayout().map((p, i) => ({ x: p.x, width: p.width, top: p.top, kind: 'platform', key: `platform-${i}` }));
   for (const o of (roomState?.obstacles || [])) {
     // Crates are solid blocks: the top is a stable landing surface and the
     // sides/underside stop the avatar. Other props are hazards/boosters.
@@ -419,7 +471,7 @@ function overlapsHorizontally(x, surface) {
   return x + PLAYER_HALF_W > surface.x + 2 && x - PLAYER_HALF_W < surface.x + surface.width - 2;
 }
 function findPlatformAtX(x, padding = 8) {
-  return PLATFORMS.find(p => x >= p.x + padding && x <= p.x + p.width - padding) || null;
+  return getPlatformLayout().find(p => x >= p.x + padding && x <= p.x + p.width - padding) || null;
 }
 function isStandingOnPlatform(x, feetY) {
   return getSolidSurfaces().some(s => overlapsHorizontally(x, s) && Math.abs(feetY - s.top) <= 8);
@@ -455,11 +507,16 @@ function gameLoop(now) {
   // Drop excessive catch-up after a stalled tab; don't turn it into a burst of jumps.
   if (steps === 8 && physicsAccumulator > fixedStep * 2) physicsAccumulator = 0;
   drawWorld(now);
-  updateGameChrome();
+  if (now - lastChromeUpdate >= 100) { updateGameChrome(); lastChromeUpdate = now; }
   rafId = requestAnimationFrame(gameLoop);
 }
 function physicsStep(dt, now) {
   if (!roomState || roomState.phase !== 'race') return;
+  if (roomState.raceStartsAt && synchronizedNow() < roomState.raceStartsAt) {
+    motion.moving = false; motion.vy = 0; motion.jumping = false; motion.grounded = true;
+    jumpQueuedUntil = 0;
+    return;
+  }
   const me = getMe();
   if (!me || me.finished) { motion.moving = false; return; }
   if (now < motion.pauseUntil) return;
@@ -476,7 +533,10 @@ function physicsStep(dt, now) {
   if (jumpQueuedUntil && now > jumpQueuedUntil) jumpQueuedUntil = 0;
   if (jumpQueuedUntil && (motion.grounded || now <= motion.coyoteUntil)) {
     // Holding W gives the existing full-height jump; a quick tap makes a lower hop.
-    motion.vy = jumpHeld ? JUMP_FULL_POWER : JUMP_TAP_POWER;
+    const me = getMe();
+    const hasJumpBoots = !jumpBoostActiveThisJump && (Number(me?.jumpBoosts) || 0) > 0;
+    motion.vy = hasJumpBoots ? (jumpHeld ? JUMP_FULL_POWER * 1.27 : JUMP_TAP_POWER * 1.2) : (jumpHeld ? JUMP_FULL_POWER : JUMP_TAP_POWER);
+    if (hasJumpBoots) { jumpBoostActiveThisJump = true; socket.emit('useJumpBoost', {}, result => { if (!result?.ok) pushLocalMessage(result.error || 'Az ugrócsizma nem aktiválható.'); }); }
     motion.grounded = false;
     motion.jumping = true;
     jumpLaunchedByW = true;
@@ -539,6 +599,7 @@ function physicsStep(dt, now) {
         motion.vy = 0;
         motion.grounded = true;
         jumpLaunchedByW = false;
+        jumpBoostActiveThisJump = false;
         motion.coyoteUntil = now + COYOTE_TIME_MS;
       }
     } else {
@@ -566,7 +627,7 @@ function physicsStep(dt, now) {
     motion.y = 0; motion.vy = 0; motion.grounded = true;
     motion.moving = false; motion.jumping = false; motion.coyoteUntil = 0;
     motion.pauseUntil = now + 170;
-    jumpQueuedUntil = 0; jumpLaunchedByW = false; jumpHeld = false;
+    jumpQueuedUntil = 0; jumpLaunchedByW = false; jumpHeld = false; jumpBoostActiveThisJump = false;
     socket.emit('fellOffCourse');
     pushLocalMessage('💦 Leestél a pályáról — visszakerültél a rajthoz!');
     return;
@@ -607,7 +668,7 @@ function physicsStep(dt, now) {
 
   // Goal can only be reached while on the final flag platform. This prevents
   // accidental finishes while falling past the flag or touching it from below.
-  if (motion.x >= CANVAS_W - 90 && Math.abs((GROUND_Y + motion.y) - PLATFORMS[PLATFORMS.length - 1].top) <= 30) {
+  if (motion.x >= CANVAS_W - 90 && Math.abs((GROUND_Y + motion.y) - getPlatformLayout()[getPlatformLayout().length - 1].top) <= 30) {
     if (now - lastSendAt > 55) {
       lastSendAt = now;
       socket.emit('playerPosition', { x: motion.x, y: motion.y, face: motion.face, moving: motion.moving, jumping: motion.jumping });
@@ -623,8 +684,16 @@ function pushLocalMessage(message) { toast(message); }
 function drawWorld(now) {
   const canvas = $('worldCanvas'); if (!canvas || !roomState) return;
   const ctx = canvas.getContext('2d'); const w = canvas.width, h = canvas.height; const length = CANVAS_W; const isBuild = roomState.phase === 'build';
+  const theme = roomState.settings?.mapTheme || 'meadow';
   ctx.clearRect(0, 0, w, h);
-  drawScenery(ctx, length, now, 0);
+  // Cache the static scenery and platforms per map: this removes dozens of path/gradient operations from every animation frame.
+  if (!sceneCache.canvas || sceneCache.theme !== theme) {
+    const bg = document.createElement('canvas'); bg.width = CANVAS_W; bg.height = CANVAS_H;
+    drawScenery(bg.getContext('2d'), CANVAS_W, 0, 0, theme);
+    sceneCache = { theme, canvas: bg };
+  }
+  ctx.drawImage(sceneCache.canvas, 0, 0);
+  drawMapMotion(ctx, theme, now);
   for (const o of roomState.obstacles || []) drawObstacle(ctx, o, now);
   drawGoal(ctx, length, now);
   if (isBuild) {
@@ -632,7 +701,7 @@ function drawWorld(now) {
     ctx.fillStyle = '#ff536330'; ctx.fillRect(GOAL_SAFE_ZONE.left, GOAL_SAFE_ZONE.top, GOAL_SAFE_ZONE.right - GOAL_SAFE_ZONE.left, GOAL_SAFE_ZONE.bottom - GOAL_SAFE_ZONE.top);
     ctx.strokeStyle = '#ff6b7d'; ctx.lineWidth = 2; ctx.setLineDash([6, 4]);
     ctx.strokeRect(GOAL_SAFE_ZONE.left, GOAL_SAFE_ZONE.top, GOAL_SAFE_ZONE.right - GOAL_SAFE_ZONE.left, GOAL_SAFE_ZONE.bottom - GOAL_SAFE_ZONE.top); ctx.setLineDash([]);
-    ctx.fillStyle = '#552638e8'; roundRect(ctx, GOAL_SAFE_ZONE.left - 1, GOAL_SAFE_ZONE.top - 26, 165, 22, 7); ctx.fill();
+    ctx.fillStyle = '#552638e8'; roundRect(ctx, GOAL_SAFE_ZONE.left - 1, GOAL_SAFE_ZONE.top - 26, 145, 22, 7); ctx.fill();
     ctx.fillStyle = '#fff1f3'; ctx.font = 'bold 11px Nunito'; ctx.textAlign = 'left'; ctx.fillText('🏁 CÉLZÓNA – TILOS', GOAL_SAFE_ZONE.left + 8, GOAL_SAFE_ZONE.top - 11);
     ctx.restore();
   }
@@ -685,117 +754,83 @@ function drawWorld(now) {
   }
 }
 function roundRect(ctx,x,y,w,h,r) { ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
-function drawScenery(ctx, length, now, cam) {
-  // Richer layered cartoon landscape: sky glow, distant snowy peaks, forests,
-  // drifting clouds and animated water, all drawn locally without image files.
-  const sky = ctx.createLinearGradient(0, 0, 0, CANVAS_H);
-  sky.addColorStop(0, '#41aaf0'); sky.addColorStop(0.37, '#8bd7fb');
-  sky.addColorStop(0.72, '#d0f4ff'); sky.addColorStop(1, '#f3fcff');
-  ctx.fillStyle = sky; ctx.fillRect(0, 0, length, CANVAS_H);
-
-  const glow = ctx.createRadialGradient(900, 82, 8, 900, 82, 118);
-  glow.addColorStop(0, '#fff8c9cc'); glow.addColorStop(0.35, '#fff4b866'); glow.addColorStop(1, '#fff4b800');
-  ctx.fillStyle = glow; ctx.fillRect(770, 0, 260, 220);
-  ctx.fillStyle = '#fff7ca'; ctx.beginPath(); ctx.arc(900, 82, 26, 0, Math.PI * 2); ctx.fill();
-  ctx.strokeStyle = '#fff3be66'; ctx.lineWidth = 2;
-  for (let i = 0; i < 12; i++) {
-    const a = i * Math.PI / 6 + now / 18000;
-    ctx.beginPath(); ctx.moveTo(900 + Math.cos(a) * 34, 82 + Math.sin(a) * 34);
-    ctx.lineTo(900 + Math.cos(a) * (44 + (i % 2) * 7), 82 + Math.sin(a) * (44 + (i % 2) * 7)); ctx.stroke();
+function drawScenery(ctx, length, now, cam, theme = 'meadow') {
+  // Four selectable worlds use the same simple physics style but distinct terrain and scenery.
+  if (theme === 'moon') {
+    const sky = ctx.createLinearGradient(0, 0, 0, CANVAS_H); sky.addColorStop(0, '#071126'); sky.addColorStop(.65, '#131e3c'); sky.addColorStop(1, '#25304a'); ctx.fillStyle = sky; ctx.fillRect(0, 0, length, CANVAS_H);
+    // Static star field with deterministic positions so it can be cached.
+    for (let i = 0; i < 90; i++) { const x = (i * 137 + 29) % length, y = (i * 67 + 19) % 380, r = i % 9 === 0 ? 2 : .8 + (i % 3) * .35; ctx.fillStyle = i % 5 === 0 ? '#ffe9b8' : '#d8e7ff'; ctx.globalAlpha = .45 + (i % 4) * .13; ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill(); } ctx.globalAlpha = 1;
+    ctx.fillStyle = '#d7e5ff'; ctx.beginPath(); ctx.arc(860, 105, 43, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = '#95aacb'; [[842,93,8],[877,115,12],[852,130,5],[888,81,6]].forEach(([x,y,r])=>{ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);ctx.fill();});
+    ctx.fillStyle = '#1a2745'; ctx.beginPath(); ctx.moveTo(0,480); for(let x=0;x<=length+20;x+=20)ctx.lineTo(x,410+Math.sin(x*.018)*17+Math.sin(x*.041)*7); ctx.lineTo(length,520);ctx.lineTo(0,520);ctx.closePath();ctx.fill();
+    ctx.fillStyle = '#252e48'; ctx.fillRect(0, 500, length, 120); for(let i=0;i<19;i++){const x=i*61+9,y=520+(i%4)*19;ctx.fillStyle='#3c4660';ctx.beginPath();ctx.ellipse(x,y,18+(i%3)*3,5+(i%2)*2,0,0,Math.PI*2);ctx.fill();}
+  } else if (theme === 'mars') {
+    const sky = ctx.createLinearGradient(0,0,0,CANVAS_H); sky.addColorStop(0,'#5b1e36');sky.addColorStop(.48,'#d95b50');sky.addColorStop(1,'#f8b16e');ctx.fillStyle=sky;ctx.fillRect(0,0,length,CANVAS_H);
+    const sun=ctx.createRadialGradient(850,100,8,850,100,80);sun.addColorStop(0,'#fff2b7');sun.addColorStop(.55,'#ffbd73');sun.addColorStop(1,'#ffbd7300');ctx.fillStyle=sun;ctx.fillRect(750,0,200,200);ctx.fillStyle='#ffdd9a';ctx.beginPath();ctx.arc(850,100,27,0,Math.PI*2);ctx.fill();
+    for(let i=0;i<9;i++){const x=i*140-38,y=270+(i%3)*24;ctx.fillStyle=i%2?'#a74745':'#873746';ctx.beginPath();ctx.moveTo(x-70,500);ctx.lineTo(x-50,y+30);ctx.lineTo(x-10,y);ctx.lineTo(x+28,y+20);ctx.lineTo(x+60,y+4);ctx.lineTo(x+100,500);ctx.closePath();ctx.fill();ctx.fillStyle='#d66b53';ctx.fillRect(x-10,y+24,28,4);}
+    ctx.fillStyle='#9b453b';ctx.fillRect(0,500,length,120);for(let i=0;i<20;i++){const x=(i*71+22)%length,y=516+(i%5)*20;ctx.fillStyle=i%2?'#ba5c43':'#733744';ctx.beginPath();ctx.ellipse(x,y,12+(i%4)*4,4+(i%2)*2,.1,0,Math.PI*2);ctx.fill();}
+  } else if (theme === 'city') {
+    const sky=ctx.createLinearGradient(0,0,0,CANVAS_H);sky.addColorStop(0,'#111c3e');sky.addColorStop(.5,'#3e477d');sky.addColorStop(1,'#f08a78');ctx.fillStyle=sky;ctx.fillRect(0,0,length,CANVAS_H);
+    const glow=ctx.createRadialGradient(860,100,5,860,100,110);glow.addColorStop(0,'#ffe7accc');glow.addColorStop(1,'#ffe7ac00');ctx.fillStyle=glow;ctx.fillRect(740,0,230,220);ctx.fillStyle='#ffe3b3';ctx.beginPath();ctx.arc(860,100,25,0,Math.PI*2);ctx.fill();
+    for(let i=0;i<20;i++){const x=i*58-8,bh=70+((i*41)%180),top=500-bh;ctx.fillStyle=['#1a2c4d','#263454','#293b5b','#25304e'][i%4];ctx.fillRect(x,top,48,bh+15);ctx.fillStyle='#6b80a6';ctx.fillRect(x+3,top+4,42,3);for(let r=0;r<Math.floor(bh/19);r++)for(let c=0;c<3;c++){ctx.fillStyle=(i*7+r*3+c)%5===0?'#91dfff':((i+r+c)%3===0?'#ffc76d':'#496287');ctx.globalAlpha=.75;ctx.fillRect(x+7+c*13,top+12+r*18,6,8);}ctx.globalAlpha=1;}
+    ctx.fillStyle='#16243a';ctx.fillRect(0,500,length,120);ctx.strokeStyle='#6ad6f5';ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(0,502);ctx.lineTo(length,502);ctx.stroke();for(let i=0;i<24;i++){ctx.fillStyle=i%3===0?'#ffb86d':'#72d7ff';ctx.globalAlpha=.4;ctx.fillRect(i*49+4,533+(i%4)*19,22+(i%3)*8,2);}ctx.globalAlpha=1;
+  } else {
+    const sky = ctx.createLinearGradient(0, 0, 0, CANVAS_H); sky.addColorStop(0, '#41aaf0'); sky.addColorStop(.37, '#8bd7fb'); sky.addColorStop(.72, '#d0f4ff'); sky.addColorStop(1, '#f3fcff'); ctx.fillStyle = sky; ctx.fillRect(0, 0, length, CANVAS_H);
+    const glow = ctx.createRadialGradient(900, 82, 8, 900, 82, 118); glow.addColorStop(0, '#fff8c9cc'); glow.addColorStop(.35, '#fff4b866'); glow.addColorStop(1, '#fff4b800'); ctx.fillStyle = glow; ctx.fillRect(770, 0, 260, 220); ctx.fillStyle = '#fff7ca'; ctx.beginPath(); ctx.arc(900, 82, 26, 0, Math.PI * 2); ctx.fill();
+    for (let i = 0; i < 8; i++) { const x = i * 165 - 65, peakY = 174 + (i % 3) * 27; ctx.fillStyle = i % 2 ? '#8bb7d5' : '#a0c9de'; ctx.beginPath(); ctx.moveTo(x - 55, 440); ctx.lineTo(x + 40, peakY); ctx.lineTo(x + 94, peakY + 54); ctx.lineTo(x + 143, 440); ctx.closePath(); ctx.fill(); ctx.fillStyle = '#eaf8ff'; ctx.beginPath(); ctx.moveTo(x + 24, peakY + 29); ctx.lineTo(x + 40, peakY); ctx.lineTo(x + 59, peakY + 30); ctx.lineTo(x + 48, peakY + 25); ctx.lineTo(x + 40, peakY + 35); ctx.lineTo(x + 33, peakY + 26); ctx.closePath(); ctx.fill(); }
+    const hillGrad = ctx.createLinearGradient(0,270,0,485);hillGrad.addColorStop(0,'#75bf9e');hillGrad.addColorStop(1,'#398f76');ctx.fillStyle=hillGrad;ctx.beginPath();ctx.moveTo(0,450);for(let x=0;x<=length+30;x+=30)ctx.lineTo(x,360+Math.sin(x*.008)*28+Math.sin(x*.021)*13);ctx.lineTo(length,500);ctx.lineTo(0,500);ctx.closePath();ctx.fill();
+    ctx.fillStyle='#4f9e73';ctx.beginPath();ctx.moveTo(0,472);for(let x=0;x<=length+30;x+=26)ctx.lineTo(x,405+Math.sin(x*.011+1.7)*23+Math.sin(x*.027)*10);ctx.lineTo(length,510);ctx.lineTo(0,510);ctx.closePath();ctx.fill();
+    for(let i=0;i<37;i++){const x=i*32-8,y=438+Math.sin(i*1.7)*15,h=28+((i*17)%27);ctx.fillStyle=i%3===0?'#2e806b':(i%2?'#347f6b':'#3d9270');ctx.beginPath();ctx.moveTo(x-15,y);ctx.lineTo(x,y-h);ctx.lineTo(x+16,y);ctx.closePath();ctx.fill();ctx.fillStyle='#72ba8a88';ctx.beginPath();ctx.moveTo(x-7,y-h*.36);ctx.lineTo(x,y-h);ctx.lineTo(x+7,y-h*.38);ctx.closePath();ctx.fill();}
+    for(let i=0;i<5;i++){const x=((i*267)% (length+150))-70,y=72+(i%3)*54;ctx.fillStyle='#ffffffad';ctx.beginPath();ctx.ellipse(x,y+9,32,12,0,0,Math.PI*2);ctx.ellipse(x+22,y-2,24,20,0,0,Math.PI*2);ctx.ellipse(x+48,y+8,30,13,0,0,Math.PI*2);ctx.fill();}
+    const water = ctx.createLinearGradient(0,490,0,CANVAS_H);water.addColorStop(0,'#45d3ee');water.addColorStop(.22,'#26a8df');water.addColorStop(1,'#125d9c');ctx.fillStyle=water;ctx.fillRect(0,500,length,CANVAS_H-500);
   }
-
-  // Far blue mountain range with snowy peaks.
-  for (let i = 0; i < 8; i++) {
-    const x = i * 165 - 65;
-    const peakY = 174 + (i % 3) * 27;
-    ctx.fillStyle = i % 2 ? '#8bb7d5' : '#a0c9de';
-    ctx.beginPath(); ctx.moveTo(x - 55, 440); ctx.lineTo(x + 40, peakY); ctx.lineTo(x + 94, peakY + 54); ctx.lineTo(x + 143, 440); ctx.closePath(); ctx.fill();
-    ctx.fillStyle = '#eaf8ff';
-    ctx.beginPath(); ctx.moveTo(x + 24, peakY + 29); ctx.lineTo(x + 40, peakY); ctx.lineTo(x + 59, peakY + 30); ctx.lineTo(x + 48, peakY + 25); ctx.lineTo(x + 40, peakY + 35); ctx.lineTo(x + 33, peakY + 26); ctx.closePath(); ctx.fill();
-  }
-  // Middle green hills, offset from the mountain layer.
-  const hillGrad = ctx.createLinearGradient(0, 270, 0, 485);
-  hillGrad.addColorStop(0, '#75bf9e'); hillGrad.addColorStop(1, '#398f76');
-  ctx.fillStyle = hillGrad; ctx.beginPath(); ctx.moveTo(0, 450);
-  for (let x = 0; x <= length + 30; x += 30) ctx.lineTo(x, 360 + Math.sin(x * 0.008) * 28 + Math.sin(x * 0.021) * 13);
-  ctx.lineTo(length, 500); ctx.lineTo(0, 500); ctx.closePath(); ctx.fill();
-  ctx.fillStyle = '#4f9e73'; ctx.beginPath(); ctx.moveTo(0, 472);
-  for (let x = 0; x <= length + 30; x += 26) ctx.lineTo(x, 405 + Math.sin(x * 0.011 + 1.7) * 23 + Math.sin(x * 0.027) * 10);
-  ctx.lineTo(length, 510); ctx.lineTo(0, 510); ctx.closePath(); ctx.fill();
-
-  // Distant forest silhouettes, with varied tree heights and highlights.
-  for (let i = 0; i < 37; i++) {
-    const x = i * 32 - 8;
-    const y = 438 + Math.sin(i * 1.7) * 15;
-    const h = 28 + ((i * 17) % 27);
-    ctx.fillStyle = i % 3 === 0 ? '#2e806b' : (i % 2 ? '#347f6b' : '#3d9270');
-    ctx.beginPath(); ctx.moveTo(x - 15, y); ctx.lineTo(x, y - h); ctx.lineTo(x + 16, y); ctx.closePath(); ctx.fill();
-    ctx.fillStyle = '#72ba8a88'; ctx.beginPath(); ctx.moveTo(x - 7, y - h * .36); ctx.lineTo(x, y - h); ctx.lineTo(x + 7, y - h * .38); ctx.closePath(); ctx.fill();
-  }
-
-  // Three layered clouds drift slowly so the background has subtle motion.
-  for (let i = 0; i < 5; i++) {
-    const x = ((i * 267 + (now / 85) % (length + 150)) % (length + 150)) - 70;
-    const y = 72 + (i % 3) * 54;
-    ctx.fillStyle = '#ffffffad';
-    ctx.beginPath(); ctx.ellipse(x, y + 9, 32, 12, 0, 0, Math.PI * 2); ctx.ellipse(x + 22, y - 2, 24, 20, 0, 0, Math.PI * 2); ctx.ellipse(x + 48, y + 8, 30, 13, 0, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = '#ffffff4a'; ctx.beginPath(); ctx.ellipse(x + 20, y - 7, 13, 5, -.2, 0, Math.PI * 2); ctx.fill();
-  }
-  // Tiny bird silhouettes.
-  ctx.strokeStyle = '#286b98aa'; ctx.lineWidth = 2;
-  for (let i = 0; i < 3; i++) {
-    const x = 155 + i * 24 + Math.sin(now / 1200 + i) * 4, y = 145 + (i % 2) * 10;
-    ctx.beginPath(); ctx.moveTo(x - 7, y + 3); ctx.quadraticCurveTo(x - 3, y - 3, x, y + 2); ctx.quadraticCurveTo(x + 5, y - 3, x + 9, y + 2); ctx.stroke();
-  }
-
-  // Blue water with animated highlights and a few gentle ripples.
-  const water = ctx.createLinearGradient(0, 490, 0, CANVAS_H);
-  water.addColorStop(0, '#45d3ee'); water.addColorStop(0.22, '#26a8df'); water.addColorStop(1, '#125d9c');
-  ctx.fillStyle = water; ctx.fillRect(0, 500, length, CANVAS_H - 500);
-  ctx.fillStyle = '#b9f5ff1c';
-  for (let i = 0; i < 9; i++) {
-    const x = i * 137 + 12, y = 535 + (i % 3) * 25;
-    ctx.beginPath(); ctx.ellipse(x, y, 44, 6, 0, 0, Math.PI * 2); ctx.fill();
-  }
-  ctx.strokeStyle = '#baf6ff'; ctx.lineWidth = 2.4;
-  for (let i = 0; i < 16; i++) {
-    const x = ((i * 89 + now / (i % 2 ? 50 : 65)) % (length + 60)) - 30;
-    const y = 516 + (i % 4) * 24;
-    ctx.beginPath(); ctx.moveTo(x, y); ctx.quadraticCurveTo(x + 12, y - 4, x + 25, y); ctx.quadraticCurveTo(x + 35, y + 3, x + 45, y); ctx.stroke();
-  }
-  // Soft reflections below the islands.
-  ctx.fillStyle = '#e9ffff33';
-  for (let i = 0; i < 10; i++) ctx.fillRect(i * 119 + (now / 45 % 35), 508 + (i % 4) * 24, 28 + (i % 3) * 8, 2);
-
-  for (const p of PLATFORMS) drawPlatform(ctx, p, now);
-  // Start marker.
-  ctx.fillStyle = '#e9f5ff'; ctx.fillRect(17, PLATFORMS[0].top - 36, 4, 36);
-  ctx.fillStyle = '#17334c'; roundRect(ctx, 13, PLATFORMS[0].top - 57, 58, 18, 5); ctx.fill();
-  ctx.fillStyle = '#fff'; ctx.font = '900 11px Nunito'; ctx.textAlign = 'center'; ctx.fillText('RAJT', 42, PLATFORMS[0].top - 44);
+  const platforms = getPlatformLayout();
+  for (const p of platforms) drawPlatform(ctx, p, now, theme);
+  const startTop = platforms[0].top;
+  ctx.fillStyle = theme === 'city' ? '#b6e9ff' : (theme === 'moon' ? '#dae8ff' : (theme === 'mars' ? '#ffd4ac' : '#e9f5ff'));
+  ctx.fillRect(17, startTop - 36, 4, 36); ctx.fillStyle = theme === 'city' ? '#172642' : (theme === 'moon' ? '#1d2946' : (theme === 'mars' ? '#6a2834' : '#17334c'));
+  roundRect(ctx,13,startTop-57,58,18,5);ctx.fill();ctx.fillStyle='#fff';ctx.font='900 11px Nunito';ctx.textAlign='center';ctx.fillText('RAJT',42,startTop-44);
 }
-
-function drawPlatform(ctx, p, now) {
+function drawMapMotion(ctx, theme, now) {
+  // A few cheap moving details keep each themed scene alive while the static scenery stays cached.
+  if (theme === 'meadow') {
+    ctx.strokeStyle = '#c8fbff'; ctx.lineWidth = 2;
+    for (let i=0;i<7;i++){const x=(i*171+now*.055)%CANVAS_W,y=514+(i%4)*24;ctx.globalAlpha=.35+(i%3)*.1;ctx.beginPath();ctx.moveTo(x,y);ctx.quadraticCurveTo(x+9,y-3,x+18,y);ctx.stroke();}ctx.globalAlpha=1;
+  } else if (theme === 'moon') {
+    for(let i=0;i<8;i++){const x=(i*137+now*.018)%CANVAS_W,y=35+(i*53)%340;ctx.fillStyle='#eaf5ff';ctx.globalAlpha=.25+.55*Math.abs(Math.sin(now/450+i));ctx.beginPath();ctx.arc(x,y,i%3===0?2:1,0,Math.PI*2);ctx.fill();}ctx.globalAlpha=1;
+  } else if (theme === 'mars') {
+    for(let i=0;i<12;i++){const x=(i*97+now*.025)%CANVAS_W,y=165+(i*47)%330;ctx.fillStyle='#ffd4a0';ctx.globalAlpha=.15+(i%3)*.08;ctx.beginPath();ctx.ellipse(x,y,5+(i%4),1.5,0,0,Math.PI*2);ctx.fill();}ctx.globalAlpha=1;
+  } else if (theme === 'city') {
+    for(let i=0;i<8;i++){const x=(i*139+35)%CANVAS_W,y=310+(i*29)%175;ctx.fillStyle=Math.sin(now/600+i)>0?'#7ce6ff':'#ffcb7a';ctx.globalAlpha=.2+.5*Math.abs(Math.sin(now/700+i));ctx.fillRect(x,y,5,8);}ctx.globalAlpha=1;
+  }
+}
+function drawPlatform(ctx, p, now, theme = 'meadow') {
   const depth = 30;
-  ctx.fillStyle = '#8a5734'; ctx.fillRect(p.x, p.top, p.width, depth);
-  ctx.fillStyle = '#b87943';
-  for (let x = p.x + 4; x < p.x + p.width; x += 37) {
-    ctx.fillRect(x, p.top + 9, Math.min(27, p.x + p.width - x - 2), 7);
-    ctx.fillRect(x + 11, p.top + 21, 18, 6);
+  if (theme === 'moon') {
+    ctx.fillStyle='#323e5d';ctx.fillRect(p.x,p.top,p.width,depth);ctx.fillStyle='#64718d';ctx.fillRect(p.x,p.top,p.width,5);ctx.strokeStyle='#a5b6d6';ctx.lineWidth=1.4;
+    for(let x=p.x+8;x<p.x+p.width-5;x+=32){ctx.beginPath();ctx.arc(x,p.top+14,3+(x%3),0,Math.PI*2);ctx.stroke();ctx.fillStyle='#8794ab';ctx.fillRect(x+6,p.top+19,12,3);}
+    ctx.fillStyle='#7c89a2';ctx.fillRect(p.x+8,p.top+5,6,3);ctx.fillRect(p.x+p.width-15,p.top+5,6,3);
+  } else if (theme === 'mars') {
+    ctx.fillStyle='#803c3a';ctx.fillRect(p.x,p.top,p.width,depth);ctx.fillStyle='#c9684f';ctx.fillRect(p.x,p.top,p.width,7);ctx.fillStyle='#e28b63';
+    for(let x=p.x+5;x<p.x+p.width-2;x+=26){ctx.beginPath();ctx.moveTo(x,p.top+10);ctx.lineTo(x+8,p.top+5+(x%4));ctx.lineTo(x+17,p.top+10);ctx.closePath();ctx.fill();ctx.fillStyle='#67313b';ctx.fillRect(x+4,p.top+18,13,4);ctx.fillStyle='#e28b63';}
+  } else if (theme === 'city') {
+    ctx.fillStyle='#384b68';ctx.fillRect(p.x,p.top,p.width,depth);ctx.fillStyle='#8196ab';ctx.fillRect(p.x,p.top,p.width,5);ctx.fillStyle='#55d7f5';ctx.fillRect(p.x,p.top+4,p.width,2);ctx.fillStyle='#263852';
+    for(let x=p.x+7;x<p.x+p.width-3;x+=21){ctx.fillRect(x,p.top+11,12,14);ctx.fillStyle='#ffc86e';ctx.fillRect(x+3,p.top+14,3,4);ctx.fillRect(x+8,p.top+14,3,4);ctx.fillStyle='#263852';}
+  } else {
+    ctx.fillStyle = '#8a5734'; ctx.fillRect(p.x, p.top, p.width, depth); ctx.fillStyle = '#b87943';
+    for (let x = p.x + 4; x < p.x + p.width; x += 37) { ctx.fillRect(x, p.top + 9, Math.min(27, p.x + p.width - x - 2), 7); ctx.fillRect(x + 11, p.top + 21, 18, 6); }
+    ctx.fillStyle = '#50ad45'; ctx.fillRect(p.x, p.top - 8, p.width, 11); ctx.fillStyle = '#8ae05c'; ctx.fillRect(p.x, p.top - 8, p.width, 3);
+    for (let x = p.x + 9; x < p.x + p.width - 3; x += 23) { ctx.strokeStyle = '#318a3e'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x, p.top - 5); ctx.lineTo(x - 3, p.top - 12 - Math.sin(x + now / 400) * 2); ctx.stroke(); }
   }
-  ctx.fillStyle = '#50ad45'; ctx.fillRect(p.x, p.top - 8, p.width, 11);
-  ctx.fillStyle = '#8ae05c'; ctx.fillRect(p.x, p.top - 8, p.width, 3);
-  for (let x = p.x + 9; x < p.x + p.width - 3; x += 23) {
-    ctx.strokeStyle = '#318a3e'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x, p.top - 5); ctx.lineTo(x - 3, p.top - 12 - Math.sin(x + now / 400) * 2); ctx.stroke();
-  }
-  // Simple timber supports beneath the floating platforms.
-  if (p.top < 460 && p.x > 250 && p.x < 950) {
-    ctx.fillStyle = '#795036'; ctx.fillRect(p.x + 12, p.top + depth, 15, Math.min(500 - p.top - depth, 55));
-    ctx.fillRect(p.x + p.width - 28, p.top + depth, 15, Math.min(500 - p.top - depth, 55));
+  if (theme === 'meadow' && p.top < 460 && p.x > 250 && p.x < 950) {
+    ctx.fillStyle = '#795036'; ctx.fillRect(p.x+12,p.top+depth,15,Math.min(500-p.top-depth,55)); ctx.fillRect(p.x+p.width-28,p.top+depth,15,Math.min(500-p.top-depth,55));
+  } else if (theme === 'city' && p.x > 250 && p.x < 950) {
+    ctx.fillStyle='#2d3c56';ctx.fillRect(p.x+12,p.top+depth,12,Math.min(500-p.top-depth,55));ctx.fillRect(p.x+p.width-26,p.top+depth,12,Math.min(500-p.top-depth,55));
   }
 }
+
 function drawGoal(ctx, length, now) {
   const x = length - 76;
-  const goalPlatform = PLATFORMS[PLATFORMS.length - 1];
+  const goalPlatform = getPlatformLayout()[getPlatformLayout().length - 1];
   const ground = goalPlatform.top;
   ctx.fillStyle = '#425c74'; ctx.fillRect(x, ground - 69, 5, 69);
   ctx.fillStyle = '#fff9dc'; ctx.fillRect(x + 4, ground - 67, 42, 24);
@@ -824,7 +859,7 @@ function drawAnimalNameTag(ctx, p, x, base, bob) {
   const label = p.name || 'Játékos';
   const width = ctx.measureText(label).width;
   const tx = x - width / 2 - 8;
-  const ty = base - 84 + bob - (p.labelOffset || 0);
+  const ty = base - 58 + bob - (p.labelOffset || 0);
   ctx.fillStyle = p.id === socket.id ? '#153c54' : '#203752';
   roundRect(ctx, tx, ty, width + 16, 20, 7); ctx.fill();
   ctx.strokeStyle = p.id === socket.id ? '#ffe17c' : '#ffffffa0'; ctx.lineWidth = 1.5; ctx.stroke();
@@ -833,20 +868,23 @@ function drawAnimalNameTag(ctx, p, x, base, bob) {
 }
 function drawAnimal(ctx,p,now) {
   const type=ANIMALS[p.animal] ? p.animal : 'pig';
-  const bob=p.moving?Math.sin(now/48)*2.2:Math.sin(now/400+p.joinOrder)*1.1;
+  const bob=p.jumping ? -2.2 : (p.moving ? Math.abs(Math.sin(now/66))*2.0 : Math.sin(now/520+p.joinOrder)*.9);
   const base=GROUND_Y+(p.y||0);
   const x=p.x;
   const sprite = ANIMAL_SPRITES[type];
   if (sprite && sprite.complete && sprite.naturalWidth >= 160) {
     ctx.save();
-    ctx.fillStyle = '#18465e42'; ctx.beginPath(); ctx.ellipse(x, base + 3, p.moving ? 17 : 20, 4, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#18465e42'; ctx.beginPath(); ctx.ellipse(x, base + 2, p.moving ? 10 : 11, 2.5, 0, 0, Math.PI * 2); ctx.fill();
     ctx.translate(x, base + bob);
     if (p.face < 0) ctx.scale(-1, 1);
-    const frame = p.moving ? (Math.floor(now / 125) % 2) : 0;
-    ctx.drawImage(sprite, frame * 80, 0, 80, 80, -36, -72, 72, 72);
+    if (p.moving) ctx.rotate(Math.sin(now / 70) * .055);
+    const frame = p.moving ? (Math.floor(now / 104) % 2) : 0;
+    const squash = p.jumping ? 1.035 : (p.moving ? 0.96 + Math.abs(Math.sin(now / 72)) * 0.06 : 1);
+    ctx.scale(1 / Math.sqrt(squash), squash);
+    ctx.drawImage(sprite, frame * 80, 0, 80, 80, -24, -47, 48, 48);
     if ((p.shields || 0) > 0) {
-      ctx.strokeStyle = '#8ee9ffbb'; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.ellipse(0, -34, 30, 34, 0, 0, Math.PI * 2); ctx.stroke();
-      ctx.fillStyle = '#b8f6ff'; ctx.font = 'bold 12px Nunito'; ctx.textAlign = 'center'; ctx.fillText('🛡', 0, -66);
+      ctx.strokeStyle = '#8ee9ffbb'; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(0, -23, 18, 22, 0, 0, Math.PI * 2); ctx.stroke();
+      ctx.fillStyle = '#b8f6ff'; ctx.font = 'bold 11px Nunito'; ctx.textAlign = 'center'; ctx.fillText('🛡', 0, -44);
     }
     ctx.restore();
     drawAnimalNameTag(ctx, p, x, base, bob);
@@ -855,7 +893,7 @@ function drawAnimal(ctx,p,now) {
   ctx.save();
   // shadow
   ctx.fillStyle='#18465e42';ctx.beginPath();ctx.ellipse(x,base+3,p.moving?16:19,4,0,0,Math.PI*2);ctx.fill();
-  ctx.translate(x,base+bob); if(p.face<0)ctx.scale(-1,1);
+  ctx.translate(x,base+bob); ctx.scale(.78,.78); if(p.face<0)ctx.scale(-1,1);
   const legSwing=p.moving?Math.sin(now/43)*.42:Math.sin(now/240)*.05;
   // tail
   if(type==='pig'){ctx.strokeStyle='#f18ba1';ctx.lineWidth=4;ctx.beginPath();ctx.moveTo(-15,-20);ctx.bezierCurveTo(-25,-27,-23,-13,-17,-16);ctx.stroke();}
@@ -902,7 +940,7 @@ function drawAnimal(ctx,p,now) {
   if(type!=='penguin'){ctx.fillStyle='#fff';ctx.globalAlpha=.45;ctx.beginPath();ctx.ellipse(-6,-28,3,2,-.3,0,Math.PI*2);ctx.fill();ctx.globalAlpha=1;}
   // name tag
   ctx.restore();
-  ctx.save();ctx.font='900 13px Nunito';const label=p.name||'Játékos';const tw=ctx.measureText(label).width;const tx=x-tw/2-8;const ty=base-84+bob-(p.labelOffset||0);
+  ctx.save();ctx.font='900 13px Nunito';const label=p.name||'Játékos';const tw=ctx.measureText(label).width;const tx=x-tw/2-8;const ty=base-58+bob-(p.labelOffset||0);
   ctx.fillStyle=p.id===socket.id?'#153c54':'#203752';roundRect(ctx,tx,ty,tw+16,20,7);ctx.fill();ctx.strokeStyle=p.id===socket.id?'#ffe17c':'#ffffff75';ctx.lineWidth=1.5;ctx.stroke();ctx.fillStyle='#fff';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(label,x,ty+10);ctx.restore();
 }
 

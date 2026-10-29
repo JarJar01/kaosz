@@ -1,7 +1,7 @@
 ALLATKAOSZ — ONLINE 2D ALLATOS AKADALYVERSENY
 ================================================
 
-JAVITASOK EBBEN A VALTOZATBAN (1.5)
+JAVITASOK EBBEN A VALTOZATBAN (1.7)
 ---------------------------
 - A helyi karakter mozgasa helyben szimulalt; a halozati poziciok nem irjak felul minden frame-ben. Az ugrashoz gombpuffer es peremsegitseg van, a palya/platform utkozesek toleransabbak
 - A fizika fix 120 Hz-es lepesekkel fut, az ugrashoz 180 ms-os gombpuffer es 140 ms-os peremsegitseg tartozik; a tavoli karakterek pozicioja simitva jelenik meg
@@ -49,8 +49,8 @@ JATEK MAS SZAMITOGEPROL
 -----------------------
 Egyazon Wi-Fi/LAN halozaton:
 1. A szerver gepen nyiss CMD-t es ird be: ipconfig
-2. Keresd meg az aktiv halozati adapter IPv4-cimet (peldaul 192.168.1.50).
-3. A masik gepen ezt nyisd meg: http://192.168.1.50:3000
+2. Keresd meg az aktiv halozati adapter IPv4-cimet (peldaul 192.168.1.60).
+3. A masik gepen ezt nyisd meg: http://192.168.1.60:3000
 4. Ha nem erheto el, a Windows tuzfal kerdezheti a Node.js engedelyezeset; engedelyezd legalabb a maganhálózaton.
 
 Kulonbozo otthonokbol:
@@ -66,7 +66,7 @@ Epitkezeskor: a sorodon belul valassz egy epitmeny-ikont a jobb oldali panelen, 
 
 MEGJEGYZES
 ----------
-Javitott 1.5 valtozat: rovid, fix palya; TAB-os ponttabla; W billentyus ugras gombpufferrel es peremsegitseggel; fixlepeses fizika; stabil leeses-visszaallas; valodi lada-platform/oldalutkozes; objektum-figura teglalap alapú csapdaerzekeles; szerver altal ellenorzott csapdaeredmeny; epitmeny-elonezet es a celzaszlo koruli tiltott zona. A JavaScript fajlok szintaxisellenorzese sikeres volt, de ebben a letrehozasi kornyezetben az npm csomagok letoltese idotullepes miatt nem fejezodott be, ezert teljes, tobbgepes futtatasi tesztet nem tudtam lefuttatni. Az elso inditaskor a start.bat probalja telepiteni a fuggosegeket.
+Javitott 1.6 valtozat: rovid, fix palya; TAB-os ponttabla; W billentyus ugras gombpufferrel es peremsegitseggel; fixlepeses fizika; stabil leeses-visszaallas; valodi lada-platform/oldalutkozes; objektum-figura teglalap alapú csapdaerzekeles; szerver altal ellenorzott csapdaeredmeny; epitmeny-elonezet es a celzaszlo koruli tiltott zona. A JavaScript fajlok szintaxisellenorzese sikeres volt, de ebben a letrehozasi kornyezetben az npm csomagok letoltese idotullepes miatt nem fejezodott be, ezert teljes, tobbgepes futtatasi tesztet nem tudtam lefuttatni. Az elso inditaskor a start.bat probalja telepiteni a fuggosegeket.
 
 
 1.4 FRISSÍTÉS (korábbi)
@@ -85,16 +85,42 @@ Javitott 1.5 valtozat: rovid, fix palya; TAB-os ponttabla; W billentyus ugras go
 - Egy epitkezesi turnus alatt tobb epitmeny is lerakhato / pajzs is vasarolhato, amig van arany es idokeret. A turnus a „Kesz / Kihagyom” gombbal vagy az ido lejarataval zarul.
 
 
-1.5-ÖS JAVÍTÁSOK
+1.6-ÖS JAVÍTÁSOK
 - Az építkezési középső üzenet csak a várakozóknak jelenik meg, új építőnél legfeljebb 2 másodpercre.
 - A W ugrás magassága változó: rövid nyomás kisebb ugrás, nyomva tartás a korábbi maximális ugrást adja.
 - Gazdagabb rajzolt háttér: hegyek, erdő, napfény, felhők, madarak és animált víz.
 - Az építmények ütköződobozai alapján nem lehet egymásra pakolni tárgyakat.
 - A cél zászlója körül csak egy kis négyzet tiltott építési terület; nem zár el teljes függőleges sávot.
 
-1.5 FRISSÍTÉS
+1.6 FRISSÍTÉS
 - Építkezési értesítő: a középső üzenet csak a várakozó játékosoknak jelenik meg, és új építőnél 2 másodperc után eltűnik; az aktív építő nem látja.
 - Változó ugrásmagasság: rövid W-koppintással kisebb ugrás, nyomva tartással az előző maximális ugrás.
 - A pálya háttérgrafikája részletesebb: napfény, rétegzett havas hegyek, zöld dombok, távoli erdő, mozgó felhők, madarak és animált víz.
 - Az építmények hitboxai alapján nem lehet egy tárgyat egy másikra helyezni; a kliens előnézete pirossal jelzi a tiltott helyet.
 - A zászló körüli tiltott építési zóna kis téglalap, nem teljes magasságú sáv; a szerver ugyanezt ellenőrzi.
+
+
+ÚJ A 1.6-OS VÁLTOZATBAN
+- Négy választható pályavilág: Kezdő mező, Hold, Mars és Város.
+- Minden futam előtt közös 3–2–1–MEHET visszaszámlálás. Az 5/5 (vagy beállított utolsó) kör külön feliratot kap: UTOLSÓ KÖR! GYERÜNK, VADÁLLATOK!
+- Kisebb állatkarakterek, gyorsabb mozgásanimáció és kisebb fizikai ütközési doboz.
+- A háttér pályavilágonként egyszer renderelődik és gyorsítótárból rajzolódik, így csökken a képkockánkénti terhelés.
+- A pályák platformelrendezése témánként is változik.
+
+A 1.6-os változatban a szobagazda 4 pályavilágból választhat: Kezdő mező, Hold, Mars, Város. A világok saját háttérrel és módosított platformelrendezéssel rendelkeznek. Minden futam 3–2–1–MEHET visszaszámlálással indul, az utolsó körben pedig külön 'UTOLSÓ KÖR! GYERÜNK, VADÁLLATOK!' jelzés jelenik meg.
+
+
+1.7-ES FRISSÍTÉS
+- Négy választható világ: Kezdő mező, Hold, Mars, Város; a világok eltérő hátteret és platformmagasságokat használnak.
+- A futam 3–2–1–MEHET visszaszámlálással indul; az utolsó kör külön, feltűnő üzenetet kap.
+- Kisebb rajzolt állatkarakterek és szűkebb fizikai hitbox; lendületesebb lábanimáció, enyhe squash/bob mozgással.
+- A HUD frissítése ritkábban módosítja a DOM-ot, a statikus hátterek gyorsítótárból rajzolódnak a terhelés csökkentésére.
+- Plusz segítségek vásárolhatók: Mentőöv (egy esésnél visszatesz az előző platformra) és Ugrócsizma (a következő ugrást magasítja), a pajzs mellett.
+
+1.7-ES FRISSÍTÉS – RÉSZLETEK
+- Négy pályavilág a váróteremben: Kezdő mező, Hold, Mars, Város. Mindegyik saját háttérrel és platformelrendezéssel rendelkezik.
+- Közös 3–2–1–MEHET visszaszámlálás; az utolsó körben nagy, feltűnő 'UTOLSÓ KÖR! GYERÜNK, VADÁLLATOK!' jelzés.
+- Kisebb karakterrajz és keskenyebb fizikai hitbox, futáskor váltakozó lábpozícióval, rugózó mozgással.
+- Kisebb kliensoldali terhelés: a háttér gyorsítótárazott, a HUD nem írja újra a DOM-ot minden hálózati pozíciócsomagnál.
+- Plusz segítségek építkezéskor: Pajzs (egy csapdát kivéd), Mentőöv (egyszer visszatesz az előző platformra eséskor), Ugrócsizma (a következő ugrást magasabbra teszi).
+- A zászló körüli építésmentes téglalap kissé nagyobb, de továbbra sem zárja el az egész függőleges sávot.
