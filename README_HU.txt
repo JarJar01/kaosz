@@ -158,3 +158,9 @@ FONTOS: A törlés és áthelyezés műveleteihez a játékos építkezési kör
 - A célba érkezési és jutalomüzenetek a játékbeli chatben maradnak.
 - Saját építmény törlése 8 arany, más játékos vagy alap pályaelem törlése 16 arany. A szerver ellenőrzi a tényleges költséget is.
 - A HUD teljes képernyő gombja böngészőszintű teljes képernyőt kér; a játék alapból is a teljes böngészőablakot kitölti.
+
+1.11-ES FRISSÍTÉS
+-----------------
+- Építkezéskor a teljes pálya áttekintéséhez a rajzolás 82%-os nagyításban jelenik meg; az egérhelyet a játék visszaszámolja a pálya koordinátáira, ezért az építés, törlés és mozgatás továbbra is a kurzorhoz igazodik.
+- A chat kisebb lett és a fejlécén lévő +/− gombbal összecsukható. Az összecsukott állapot a játék fázisváltásánál is megmarad.
+- Célba éréskor a chat továbbra is kiírja a helyezést, pontot és aranyat, és egy néhány másodpercig látható, külön játékbeli jutalomértesítés is megjelenik. Az első helyezett külön kiemelést kap.

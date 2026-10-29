@@ -1,8 +1,8 @@
 {
   "name": "allat-kaosz",
-  "version": "1.10.0",
+  "version": "1.11.0",
   "private": true,
-  "description": "Online 2D állatos akadályverseny, fejlettebb állatsprite-okkal, teljes képernyős HUD-dal, célchat-tel és tulajdonosfüggő objektumtörléssel",
+  "description": "Online 2D állatos akadályverseny, építkezéskor kicsinyített teljes pályanézettel, összecsukható chattel és célba érési jutalomértesítéssel",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"

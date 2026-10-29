@@ -288,3 +288,91 @@ body.game-mode #screenGame .end-layout { width: min(760px, 96vw); max-height: 94
   .hud-build-panel { width: 54vw; }
   .game-controls-hint { display: none; }
 }
+
+/* ÁllatKáosz 1.11: zoomed-out build overview, compact/collapsible chat, and finish rewards. */
+.hud-chat-card {
+  width: min(255px, 24vw);
+  max-height: min(178px, 24vh);
+  padding: 8px 9px 7px;
+  gap: 5px;
+}
+.hud-chat-card h3 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 0 4px;
+  font-size: 11px;
+}
+.hud-chat-card h3 > span { min-width: 0; }
+.hud-chat-card h3 small { margin-left: 4px; }
+.chat-collapse-toggle {
+  flex: 0 0 24px;
+  width: 24px;
+  height: 23px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border: 1px solid #7596bb;
+  border-radius: 7px;
+  background: #203c5d;
+  color: #fff;
+  font: 900 15px/1 Nunito, sans-serif;
+  cursor: pointer;
+}
+.chat-collapse-toggle:hover { background: #335b84; }
+.hud-chat-card .chat-messages { max-height: 86px; min-height: 24px; font-size: 9px; gap: 3px; }
+.hud-chat-card .chat-entry { padding-top: 4px; }
+.hud-chat-card .chat-entry input { padding: 6px 8px; font-size: 10px; }
+.hud-chat-card .chat-entry button { min-width: 29px; padding: 4px 7px; }
+.hud-chat-card.collapsed {
+  width: min(175px, 21vw);
+  max-height: 38px;
+  min-height: 0;
+  padding: 7px 8px;
+  gap: 0;
+}
+.hud-chat-card.collapsed h3 { border-bottom: 0; padding: 0; }
+.hud-chat-card.collapsed .chat-messages,
+.hud-chat-card.collapsed .chat-entry { display: none; }
+.finish-reward-notice {
+  position: absolute;
+  z-index: 19;
+  top: 105px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(480px, 72vw);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 15px;
+  border: 2px solid #65dda1;
+  border-radius: 14px;
+  background: linear-gradient(135deg, rgba(11,42,48,.97), rgba(13,34,59,.96));
+  color: #f7fffb;
+  box-shadow: 0 12px 32px #061327a8;
+  pointer-events: none;
+  animation: finishRewardPop .22s ease-out;
+}
+.finish-reward-notice.hidden { display: none; }
+.finish-reward-notice.first-place { border-color: #ffd15d; background: linear-gradient(135deg, rgba(71,49,10,.97), rgba(19,36,59,.96)); }
+.finish-reward-icon { flex: 0 0 36px; font-size: 27px; text-align: center; }
+.finish-reward-notice strong { display: block; color: #ffe078; font: 900 13px/1.2 'Baloo 2', Nunito, sans-serif; }
+.finish-reward-notice span:not(.finish-reward-icon) { display: block; margin-top: 3px; font: 800 10px/1.35 Nunito, sans-serif; overflow-wrap: anywhere; }
+@keyframes finishRewardPop { from { opacity: .3; transform: translateX(-50%) translateY(-7px) scale(.98); } to { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); } }
+.hud-build-panel { width: min(360px, 32vw); max-height: 43vh; }
+.hud-build-panel .obstacle-admin-list { max-height: 105px; }
+@media(max-width:1100px) {
+  .hud-chat-card { width: min(245px, 30vw); }
+  .hud-chat-card.collapsed { width: min(170px, 24vw); }
+  .hud-build-panel { width: min(350px, 40vw); max-height: 44vh; }
+}
+@media(max-width:760px) {
+  .hud-chat-card { left: 6px; bottom: 6px; width: min(230px, 43vw); max-height: 22vh; padding: 6px; }
+  .hud-chat-card .chat-messages { max-height: 65px; font-size: 8px; }
+  .hud-chat-card.collapsed { width: min(155px, 31vw); max-height: 34px; }
+  .hud-build-panel { width: min(320px, 55vw); max-height: 47vh; }
+  .finish-reward-notice { top: 130px; width: min(420px, 88vw); padding: 8px 10px; }
+  .finish-reward-notice strong { font-size: 11px; }
+  .finish-reward-notice span:not(.finish-reward-icon) { font-size: 9px; }
+}

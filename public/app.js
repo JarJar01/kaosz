@@ -40,6 +40,11 @@ let preferredName = '';
 let toastTimeout = null;
 let buildNoticeTimer = null;
 let buildNoticeTurnKey = null;
+let chatCollapsed = false;
+let finishNoticeTimer = null;
+let lastFinishNoticeKey = '';
+let activeFinishNotice = null;
+let finishNoticeUntil = 0;
 let lastTick = performance.now();
 let lastSendAt = 0;
 let keys = Object.create(null);
@@ -182,7 +187,18 @@ socket.on('playersMoved', positions => {
   }
   updateScoreList();
 });
-socket.on('chatUpdated', messages => { if (roomState) roomState.chat = messages; updateChat(); });
+socket.on('chatUpdated', messages => {
+  const latest = Array.isArray(messages) ? messages[messages.length - 1] : null;
+  if (latest && (latest.kind === 'finish' || latest.kind === 'first-place')) {
+    const noticeKey = `${latest.time || ''}:${latest.kind}:${latest.name}:${latest.text}`;
+    if (noticeKey !== lastFinishNoticeKey) {
+      lastFinishNoticeKey = noticeKey;
+      showFinishReward(latest);
+    }
+  }
+  if (roomState) roomState.chat = messages;
+  updateChat();
+});
 
 $('createRoomBtn').addEventListener('click', () => {
   preferredName = $('homeName').value.trim() || 'Játékos';
@@ -295,10 +311,11 @@ function renderGame() {
         <div class="canvas-pill right">🌍 <strong id="canvasMapName">${escapeHtml(MAPS[roomState.settings?.mapTheme || 'meadow'] || 'Kezdő mező')}</strong> · 🏁 Cél · TAB: pontok</div>
       </div>
       <div class="phase-center-notice hidden" id="phaseCenterNotice"><span class="phase-center-icon" id="phaseCenterIcon">🔨</span><div><strong id="phaseCenterTitle">XY MOST ÉPÍTKEZIK</strong><span id="phaseCenterSubtitle">Válassz tárgyakat, és használd fel az aranyad!</span></div></div>
+      <div class="finish-reward-notice hidden" id="finishRewardNotice" aria-live="polite"><span class="finish-reward-icon" id="finishRewardIcon">🏁</span><div><strong id="finishRewardTitle">CÉLBA ÉRÉS</strong><span id="finishRewardDetails"></span></div></div>
       <div class="race-countdown hidden" id="raceCountdown" aria-live="polite"><strong id="raceCountdownNumber">3</strong><span id="raceCountdownLabel">Felkészülni!</span></div>
       <div class="last-round-banner hidden" id="lastRoundBanner">🔥 UTOLSÓ KÖR! GYERÜNK, VADÁLLATOK! 🔥</div>
       <section class="score-overlay hidden" id="scoreOverlay" aria-label="Pontok és arany"><div class="score-overlay-head"><strong>🏆 Pontok és arany</strong><button type="button" id="closeScoreButton" aria-label="Bezárás">×</button></div><div class="score-list" id="scoreList"></div><small>Engedd fel a TAB billentyűt az ablak bezárásához.</small></section>
-      <section class="panel side-card chat-card hud-chat-card"><h3>💬 Játékchat <small>Szoba ${escapeHtml(roomState.code)}</small></h3><div class="chat-messages" id="chatMessages"></div><form class="chat-entry" id="chatForm"><input id="chatInput" maxlength="260" placeholder="Üzenet a csapatnak…" autocomplete="off"><button type="submit" aria-label="Küldés">➤</button></form></section>
+      <section class="panel side-card chat-card hud-chat-card ${chatCollapsed ? 'collapsed' : ''}" id="gameChatCard"><h3><span>💬 Chat <small>Szoba ${escapeHtml(roomState.code)}</small></span><button type="button" class="chat-collapse-toggle" id="chatCollapseButton" aria-label="Chat összecsukása" aria-expanded="${!chatCollapsed}">${chatCollapsed ? '+' : '−'}</button></h3><div class="chat-messages" id="chatMessages"></div><form class="chat-entry" id="chatForm"><input id="chatInput" maxlength="260" placeholder="Üzenet a csapatnak…" autocomplete="off"><button type="submit" aria-label="Küldés">➤</button></form></section>
       <section class="panel build-panel hud-build-panel hidden" id="buildPanel"></section>
       <div class="game-controls-hint"><span><b>A/D</b> vagy <b>←/→</b> mozgás</span><span><b>W</b> ugrás</span><span><b>TAB</b> pontok</span></div>
     </div>`;
@@ -312,13 +329,24 @@ function renderGame() {
     } catch { toast('A teljes képernyő módot a böngésző nem engedélyezte.'); }
   });
   updateFullscreenButton();
+  $('chatCollapseButton').addEventListener('click', () => {
+    chatCollapsed = !chatCollapsed;
+    const card = $('gameChatCard');
+    const button = $('chatCollapseButton');
+    card?.classList.toggle('collapsed', chatCollapsed);
+    if (button) {
+      button.textContent = chatCollapsed ? '+' : '−';
+      button.setAttribute('aria-expanded', String(!chatCollapsed));
+      button.setAttribute('aria-label', chatCollapsed ? 'Chat kinyitása' : 'Chat összecsukása');
+    }
+  });
   $('chatForm').addEventListener('submit', e => { e.preventDefault(); const text = $('chatInput').value.trim(); if (!text) return; socket.emit('chat', { text }, result => { if (!result?.ok) toast(result?.error || 'Az üzenet nem küldhető el.'); }); $('chatInput').value = ''; $('chatInput').blur(); $('worldCanvas')?.focus({ preventScroll: true }); });
   $('closeScoreButton').addEventListener('click', () => $('scoreOverlay').classList.add('hidden'));
   const canvas = $('worldCanvas');
   canvas.addEventListener('pointerdown', () => { $('chatInput')?.blur(); canvas.focus({ preventScroll: true }); });
   canvas.addEventListener('pointermove', e => {
     const rect = canvas.getBoundingClientRect();
-    mouseWorld = { x: ((e.clientX - rect.left) / rect.width) * CANVAS_W, y: ((e.clientY - rect.top) / rect.height) * CANVAS_H };
+    mouseWorld = screenToWorld(e.clientX, e.clientY, rect);
   });
   canvas.addEventListener('pointerleave', () => { mouseWorld = null; });
   canvas.focus({ preventScroll: true });
@@ -326,8 +354,9 @@ function renderGame() {
     if (!roomState || roomState.phase !== 'build' || !selectedBuildType) return;
     if (roomState.currentBuilderId !== socket.id) return toast('Most nem te építkezel.');
     const rect = canvas.getBoundingClientRect();
-    const rawX = ((e.clientX - rect.left) / rect.width) * CANVAS_W;
-    const rawY = ((e.clientY - rect.top) / rect.height) * CANVAS_H;
+    const worldPoint = screenToWorld(e.clientX, e.clientY, rect);
+    const rawX = worldPoint.x;
+    const rawY = worldPoint.y;
     const x = Math.max(28, Math.min(CANVAS_W - 28, rawX));
     const groundY = Math.max(50, Math.min(600, rawY + 20));
 
@@ -369,6 +398,7 @@ function renderGame() {
     });
   });
   updateGameChrome(); updateScoreList(); updateChat(); updateBuildControls();
+  if (activeFinishNotice && Date.now() < finishNoticeUntil) showFinishReward(activeFinishNotice);
   if (rafId) cancelAnimationFrame(rafId);
   lastTick = performance.now(); rafId = requestAnimationFrame(gameLoop);
 }
@@ -462,6 +492,31 @@ function updateScoreList() {
   const list = [...(livePlayers.length ? livePlayers : roomState.players)].sort((a,b)=>b.score-a.score || b.gold-a.gold);
   el.innerHTML = list.map((p,i)=>`<div class="score-row ${p.id===socket.id?'me':''}"><span class="score-rank">${i+1}</span><span class="score-animal">${ANIMALS[p.animal]?.emoji || '🐾'}</span><span class="score-name">${escapeHtml(p.name)}</span><span class="score-stats"><b>${p.score} p</b>🪙 ${p.gold}</span></div>`).join('');
 }
+function showFinishReward(message) {
+  activeFinishNotice = message;
+  finishNoticeUntil = Date.now() + 5200;
+  const notice = $('finishRewardNotice');
+  // Keep the notice data even if a phase change is rebuilding the game DOM;
+  // renderGame() will show it again if it is still fresh.
+  if (!notice) return;
+  const title = $('finishRewardTitle');
+  const details = $('finishRewardDetails');
+  const icon = $('finishRewardIcon');
+  const first = message.kind === 'first-place';
+  if (title) title.textContent = first ? '🏆 ELSŐKÉNT A CÉLBAN!' : '🏁 CÉLBA ÉRÉS';
+  if (details) details.textContent = message.text || '';
+  if (icon) icon.textContent = first ? '👑' : '🏁';
+  notice.classList.toggle('first-place', first);
+  notice.classList.remove('hidden');
+  if (finishNoticeTimer) clearTimeout(finishNoticeTimer);
+  finishNoticeTimer = setTimeout(() => {
+    if (Date.now() >= finishNoticeUntil) {
+      $('finishRewardNotice')?.classList.add('hidden');
+      activeFinishNotice = null;
+    }
+  }, 5200);
+}
+
 function updateChat() {
   const el = $('chatMessages'); if (!el || !roomState) return;
   const messages = roomState.chat || [];
@@ -521,6 +576,15 @@ function updateBuildControls() {
 }
 
 const CANVAS_W = 1100, CANVAS_H = 620, GROUND_Y = 430, PLAYER_H = 40, PLAYER_HALF_W = 10;
+// A little zoom-out during building makes it easier to see the entire course
+// behind the build panel. Pointer coordinates are converted back to world space.
+const BUILD_PHASE_ZOOM = 0.82;
+function screenToWorld(clientX, clientY, rect) {
+  const px = ((clientX - rect.left) / rect.width) * CANVAS_W;
+  const py = ((clientY - rect.top) / rect.height) * CANVAS_H;
+  const zoom = roomState?.phase === 'build' ? BUILD_PHASE_ZOOM : 1;
+  return { x: (px - CANVAS_W / 2) / zoom + CANVAS_W / 2, y: (py - CANVAS_H / 2) / zoom + CANVAS_H / 2 };
+}
 // Build-protected rectangles around both the starting field and the finish flag.
 const SPAWN_SAFE_ZONE = { left: 0, right: 260, top: 315, bottom: 440 };
 const GOAL_SAFE_ZONE = { left: 948, right: 1098, top: 250, bottom: 422 };
@@ -813,6 +877,16 @@ function drawWorld(now) {
   const ctx = canvas.getContext('2d'); const w = canvas.width, h = canvas.height; const length = CANVAS_W; const isBuild = roomState.phase === 'build';
   const theme = roomState.settings?.mapTheme || 'meadow';
   ctx.clearRect(0, 0, w, h);
+  if (isBuild) {
+    // Fill the margins visible outside the zoomed world.
+    const skyColors = { meadow: '#8fd7ff', moon: '#0b1430', mars: '#d86d45', city: '#314f75' };
+    ctx.fillStyle = skyColors[theme] || skyColors.meadow;
+    ctx.fillRect(0, 0, w, h);
+    ctx.save();
+    ctx.translate(w / 2, h / 2);
+    ctx.scale(BUILD_PHASE_ZOOM, BUILD_PHASE_ZOOM);
+    ctx.translate(-w / 2, -h / 2);
+  }
   // Cache the static scenery and platforms per map: this removes dozens of path/gradient operations from every animation frame.
   if (!sceneCache.canvas || sceneCache.theme !== theme) {
     const bg = document.createElement('canvas'); bg.width = CANVAS_W; bg.height = CANVAS_H;
@@ -915,6 +989,7 @@ function drawWorld(now) {
     const myP = players.find(p => p.id === socket.id);
     if (myP?.finished) { ctx.fillStyle='#10233ddb'; roundRect(ctx,w/2-145,65,290,46,14); ctx.fillStyle='#ffe078'; ctx.font='bold 17px Nunito'; ctx.textAlign='center'; ctx.fillText(`🏁 CÉLBA ÉRTÉL! Helyezés: ${myP.finishRank}.`,w/2,94); }
   }
+  if (isBuild) ctx.restore();
 }
 function roundRect(ctx,x,y,w,h,r) { ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
 function drawScenery(ctx, length, now, cam, theme = 'meadow') {
