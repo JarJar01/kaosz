@@ -537,53 +537,39 @@ function updateBuildControls() {
     const selectedItem = ITEMS.find(item => item.type === selectedBuildType) || EDIT_TOOLS.find(item => item.type === selectedBuildType);
     if (!selectedItem || (me?.gold ?? 0) < selectedItem.price) { selectedBuildType = null; movingObstacleId = null; }
   }
-  const cards = ITEMS.map(item => `<button type="button" class="shop-item ${selectedBuildType===item.type?'selected':''}" data-item="${item.type}" ${!isMe || (me?.gold ?? 0) < item.price ? 'disabled' : ''}><span class="shop-icon">${item.icon}</span><strong>${item.name}</strong><small>🪙 ${item.price}</small><span class="item-desc">${item.desc}</span></button>`).join('');
-  const editCards = EDIT_TOOLS.map(item => `<button type="button" class="shop-item edit-tool ${selectedBuildType===item.type?'selected':''}" data-item="${item.type}" ${!isMe || (me?.gold ?? 0) < item.price ? 'disabled' : ''}><span class="shop-icon">${item.icon}</span><strong>${item.name}</strong><small>🪙 ${item.price}/művelet</small><span class="item-desc">${item.desc}</span></button>`).join('');
+
+  // A compact in-game toolbar: items show their icon and price directly, with no separate object list.
+  const cards = ITEMS.map(item => `<button type="button" class="shop-item build-chip ${selectedBuildType===item.type?'selected':''}" data-item="${item.type}" ${!isMe || (me?.gold ?? 0) < item.price ? 'disabled' : ''} title="${escapeHtml(item.name)} — ${item.price} arany. ${escapeHtml(item.desc)}" aria-label="${escapeHtml(item.name)}, ${item.price} arany"><span class="shop-icon">${item.icon}</span><strong>${escapeHtml(item.name)}</strong><small>🪙 ${item.price}</small></button>`).join('');
+  const editCards = EDIT_TOOLS.map(item => `<button type="button" class="shop-item build-chip edit-tool ${selectedBuildType===item.type?'selected':''}" data-item="${item.type}" ${!isMe || (me?.gold ?? 0) < item.price ? 'disabled' : ''} title="${escapeHtml(item.desc)}" aria-label="${escapeHtml(item.name)}, ${item.price} arany"><span class="shop-icon">${item.icon}</span><strong>${escapeHtml(item.name)}</strong><small>🪙 ${item.price}</small></button>`).join('');
   const affordable = ITEMS.some(item => (me?.gold ?? 0) >= item.price) || EDIT_TOOLS.some(item => (me?.gold ?? 0) >= item.price);
-  let helpText = 'Válassz tárgyat, majd kattints a pályára. Törlésnél kattints a tárgyra; mozgatásnál először válaszd ki a tárgyat, majd az új helyét.';
-  if (selectedBuildType === 'move-tool' && movingObstacleId) helpText = 'Áthelyezés: kattints a pálya új pontjára. A célzónák és más tárgyak nem fedhetők le.';
-  else if (selectedBuildType === 'delete-tool') helpText = 'Törlés: saját tárgy 8 arany, más játékosé 16 arany. Kattints a tárgyra.';
-  else if (isMe && !affordable) helpText += ' Nincs elég aranyad új műveletre — kihagyhatod a körödet.';
-  const obstacleIcons = { crate: '📦', saw: '⚙️', spikes: '🔺', spring: '🌀', barrel: '🛢️' };
-  const obstacleNames = { crate: 'Láda', saw: 'Forgó fűrész', spikes: 'Tüskék', spring: 'Rugós kilövő', barrel: 'Hordó' };
-  const existingObstacleRows = (roomState.obstacles || []).map(o => { const deleteCost = o.ownerId === socket.id ? 8 : 16; const ownerLabel = o.ownerId === socket.id ? 'Saját tárgy' : (o.builtIn || o.ownerName === 'Pálya' ? 'Alap pályaelem' : `Építette: ${escapeHtml(o.ownerName || 'Játékos')}`); return `<div class="obstacle-admin-row"><div class="obstacle-admin-info"><span class="obstacle-admin-icon">${obstacleIcons[o.type] || '🧱'}</span><span><strong>${escapeHtml(obstacleNames[o.type] || 'Építmény')}</strong><small>${ownerLabel} · X: ${Math.round(Number(o.x) || 0)}</small></span></div><button type="button" class="obstacle-delete-button" data-delete-obstacle="${escapeHtml(o.id)}" data-delete-cost="${deleteCost}" ${!isMe || (me?.gold ?? 0) < deleteCost ? 'disabled' : ''} title="Saját: 8 arany, másé: 16 arany">🗑️ Törlés · ${deleteCost}🪙</button></div>`; }).join('');
-  panel.innerHTML = `<div class="build-top"><div><h3>🔨 Építkezési fázis</h3><p>${isMe ? `Aranyad: ${me?.gold ?? 0} · A saját időd alatt több tárgyat is elhelyezhetsz vagy módosíthatsz.` : `Most ${escapeHtml(builder?.name || 'egy játékos')} építkezik.`}</p></div><span class="build-turn-pill">${isMe?'TE JÖSSZ':'VÁRJ A SORODRA'}</span></div><div class="shop-grid">${cards}</div><div class="edit-tools-block"><h4>🛠️ Tárgyak kezelése</h4><div class="shop-grid edit-tool-grid">${editCards}</div></div><div class="obstacle-admin"><div class="obstacle-admin-heading"><h4>📋 Pályán lévő tárgyak</h4><small>${(roomState.obstacles || []).length} db · saját törlése 8, másé 16 arany</small></div><div class="obstacle-admin-list">${existingObstacleRows || '<div class="obstacle-admin-empty">Nincs lerakott tárgy.</div>'}</div></div><div class="build-footer"><span class="build-help">${escapeHtml(helpText)}</span>${isMe?'<button class="ghost-button" id="skipBuildBtn">Kész / Kihagyom →</button>':''}</div>`;
-  panel.querySelectorAll('[data-delete-obstacle]').forEach(btn => btn.addEventListener('click', () => {
-    if (!isMe) return toast('Most nem te építkezel.');
-    const id = btn.dataset.deleteObstacle;
-    const deleteCost = Number(btn.dataset.deleteCost || 8);
-    if ((getMe()?.gold ?? 0) < deleteCost) return toast(`A tárgy törlése ${deleteCost} aranyba kerül.`);
-    selectedBuildType = null; movingObstacleId = null;
-    socket.emit('deleteObstacle', { id }, result => {
-      if (!result?.ok) toast(result?.error || 'Nem sikerült törölni a tárgyat.');
-      else { toast(`🗑️ Tárgy törölve. −${result.cost || deleteCost} arany. Maradt: ${result.gold}`); updateBuildControls(); }
-    });
-  }));
+  let helpText = isMe ? 'Válassz ikont, majd kattints a pályára.' : `Várakozás: ${builder?.name || 'a játékos'} építkezik.`;
+  if (selectedBuildType === 'move-tool' && movingObstacleId) helpText = 'Mozgatás: kattints az új helyre.';
+  else if (selectedBuildType === 'delete-tool') helpText = 'Törlés: saját tárgy 8, másé 16 arany. Kattints a tárgyra.';
+  else if (isMe && !affordable) helpText = 'Nincs elég aranyad — kihagyhatod a körödet.';
+
+  panel.innerHTML = `<div class="build-toolbar-head"><div class="build-toolbar-title"><strong>🔨 ${isMe ? 'ÉPÍTKEZÉS' : `${escapeHtml(builder?.name || 'Játékos')} ÉPÍTKEZIK`}</strong><span>${isMe ? `🪙 ${me?.gold ?? 0} arany · ${escapeHtml(helpText)}` : 'Várj, amíg rád kerül a sor.'}</span></div><div class="build-toolbar-actions"><span class="build-turn-pill">${isMe?'TE JÖSSZ':'VÁRAKOZÁS'}</span>${isMe?'<button class="ghost-button build-skip-button" id="skipBuildBtn" type="button">Kész / Kihagyom →</button>':''}</div></div><div class="build-toolbar-row"><div class="build-toolbar-items" aria-label="Építmények">${cards}</div><div class="build-toolbar-tools" aria-label="Tárgykezelő eszközök">${editCards}</div></div>`;
+
   panel.querySelectorAll('[data-item]').forEach(btn => btn.addEventListener('click', () => {
     const type = btn.dataset.item;
+    if (!isMe) return toast('Most nem te építkezel.');
     if (EDIT_TOOLS.some(item => item.type === type)) {
       selectedBuildType = type; movingObstacleId = null; updateBuildControls();
-      toast(type === 'delete-tool' ? 'Törlés kiválasztva: kattints bármelyik pályatárgyra.' : 'Mozgatás kiválasztva: kattints bármelyik pályatárgyra.');
+      toast(type === 'delete-tool' ? 'Törlés kiválasztva: kattints egy pályatárgyra.' : 'Mozgatás kiválasztva: kattints a tárgyra, majd az új helyére.');
       return;
     }
     if (['shield', 'lifebuoy', 'jumpboots'].includes(type)) {
       selectedBuildType = null; movingObstacleId = null;
       const labels = { shield: 'Pajzs megvéve!', lifebuoy: 'Mentőöv megvéve! Egy leesést túlélhetsz.', jumpboots: 'Ugrócsizma megvéve! A következő W-ugrásod magasabb lesz.' };
-      socket.emit('placeBuild', { type }, result => { if (!result?.ok) toast(result?.error || 'Nem sikerült megvenni.'); else toast(labels[type] || 'Segítség megvéve.'); });
-    } else { selectedBuildType = type; movingObstacleId = null; updateBuildControls(); toast('Az akadály előnézete követi az egeret. Kattints oda, ahová építeni szeretnél.'); }
+      socket.emit('placeBuild', { type }, result => { if (!result?.ok) toast(result?.error || 'Nem sikerült megvenni.'); else { toast(labels[type] || 'Segítség megvéve.'); updateBuildControls(); } });
+    } else { selectedBuildType = type; movingObstacleId = null; updateBuildControls(); toast('Kattints a pályára, ahová az építményt szeretnéd.'); }
   }));
   if ($('skipBuildBtn')) $('skipBuildBtn').addEventListener('click', () => emitAck('skipBuild', {}, 'Építkezés befejezve.'));
 }
 
 const CANVAS_W = 1100, CANVAS_H = 620, GROUND_Y = 430, PLAYER_H = 40, PLAYER_HALF_W = 10;
-// A little zoom-out during building makes it easier to see the entire course
-// behind the build panel. Pointer coordinates are converted back to world space.
-const BUILD_PHASE_ZOOM = 0.82;
+// No zoom changes between racing and building: pointer and rendered coordinates stay 1:1.
 function screenToWorld(clientX, clientY, rect) {
-  const px = ((clientX - rect.left) / rect.width) * CANVAS_W;
-  const py = ((clientY - rect.top) / rect.height) * CANVAS_H;
-  const zoom = roomState?.phase === 'build' ? BUILD_PHASE_ZOOM : 1;
-  return { x: (px - CANVAS_W / 2) / zoom + CANVAS_W / 2, y: (py - CANVAS_H / 2) / zoom + CANVAS_H / 2 };
+  return { x: ((clientX - rect.left) / rect.width) * CANVAS_W, y: ((clientY - rect.top) / rect.height) * CANVAS_H };
 }
 // Build-protected rectangles around both the starting field and the finish flag.
 const SPAWN_SAFE_ZONE = { left: 0, right: 260, top: 315, bottom: 440 };
@@ -877,16 +863,6 @@ function drawWorld(now) {
   const ctx = canvas.getContext('2d'); const w = canvas.width, h = canvas.height; const length = CANVAS_W; const isBuild = roomState.phase === 'build';
   const theme = roomState.settings?.mapTheme || 'meadow';
   ctx.clearRect(0, 0, w, h);
-  if (isBuild) {
-    // Fill the margins visible outside the zoomed world.
-    const skyColors = { meadow: '#8fd7ff', moon: '#0b1430', mars: '#d86d45', city: '#314f75' };
-    ctx.fillStyle = skyColors[theme] || skyColors.meadow;
-    ctx.fillRect(0, 0, w, h);
-    ctx.save();
-    ctx.translate(w / 2, h / 2);
-    ctx.scale(BUILD_PHASE_ZOOM, BUILD_PHASE_ZOOM);
-    ctx.translate(-w / 2, -h / 2);
-  }
   // Cache the static scenery and platforms per map: this removes dozens of path/gradient operations from every animation frame.
   if (!sceneCache.canvas || sceneCache.theme !== theme) {
     const bg = document.createElement('canvas'); bg.width = CANVAS_W; bg.height = CANVAS_H;
@@ -989,7 +965,6 @@ function drawWorld(now) {
     const myP = players.find(p => p.id === socket.id);
     if (myP?.finished) { ctx.fillStyle='#10233ddb'; roundRect(ctx,w/2-145,65,290,46,14); ctx.fillStyle='#ffe078'; ctx.font='bold 17px Nunito'; ctx.textAlign='center'; ctx.fillText(`🏁 CÉLBA ÉRTÉL! Helyezés: ${myP.finishRank}.`,w/2,94); }
   }
-  if (isBuild) ctx.restore();
 }
 function roundRect(ctx,x,y,w,h,r) { ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
 function drawScenery(ctx, length, now, cam, theme = 'meadow') {

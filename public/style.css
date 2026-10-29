@@ -376,3 +376,74 @@ body.game-mode #screenGame .end-layout { width: min(760px, 96vw); max-height: 94
   .finish-reward-notice strong { font-size: 11px; }
   .finish-reward-notice span:not(.finish-reward-icon) { font-size: 9px; }
 }
+
+/* ÁllatKáosz 1.12: integrated top-left build toolbar; no build-phase zoom or object inventory list. */
+.hud-build-panel {
+  position: absolute;
+  z-index: 17;
+  top: 105px;
+  left: 12px;
+  right: auto;
+  bottom: auto;
+  width: max-content;
+  max-width: calc(100% - 24px);
+  max-height: none;
+  overflow: hidden;
+  padding: 7px 9px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border: 1px solid #9fc9ef;
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(8,24,43,.91), rgba(14,37,60,.88));
+  box-shadow: 0 6px 22px #06132788, inset 0 1px 0 #ffffff1a;
+  backdrop-filter: blur(5px);
+}
+.build-toolbar-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+.build-toolbar-title { display:flex; align-items:baseline; gap:8px; min-width:0; flex-wrap:wrap; }
+.build-toolbar-title strong { color:#ffe17c; font:900 11px/1.2 'Baloo 2',Nunito,sans-serif; white-space:nowrap; }
+.build-toolbar-title span { color:#d1e4f6; font-size:9px; line-height:1.2; }
+.build-toolbar-actions { display:flex; align-items:center; gap:6px; flex:none; }
+.build-toolbar-actions .build-turn-pill { padding:4px 6px; font-size:8px; }
+.build-skip-button { padding:5px 8px; font-size:9px; white-space:nowrap; border-radius:8px; }
+.build-toolbar-row { display:flex; align-items:stretch; gap:6px; min-width:0; max-width:100%; overflow-x:auto; overflow-y:hidden; scrollbar-width:thin; scrollbar-color:#6d94bc #10233a; }
+.build-toolbar-items, .build-toolbar-tools { display:flex; align-items:stretch; gap:5px; flex:0 0 auto; }
+.build-toolbar-tools { padding-left:6px; border-left:1px solid #6687a8; }
+.hud-build-panel .shop-item.build-chip {
+  flex:0 0 62px;
+  width:62px;
+  min-width:62px;
+  min-height:57px;
+  padding:4px 3px 5px;
+  gap:2px;
+  border-radius:8px;
+  background:rgba(16,36,60,.96);
+}
+.hud-build-panel .shop-item.build-chip .shop-icon { font-size:21px; line-height:1.05; }
+.hud-build-panel .shop-item.build-chip strong { display:block; width:100%; min-height:16px; font-size:8px; line-height:1.05; text-align:center; overflow-wrap:anywhere; }
+.hud-build-panel .shop-item.build-chip small { font-size:9px; line-height:1; white-space:nowrap; }
+.hud-build-panel .shop-item.build-chip.edit-tool { flex-basis:72px; width:72px; min-width:72px; }
+.hud-build-panel .shop-item.build-chip.selected { border:2px solid #ffda68; background:#314866; }
+.hud-build-panel .shop-item.build-chip:disabled { opacity:.43; filter:saturate(.55); }
+@media(max-width:760px) {
+  .hud-build-panel { top: 100px; left: 6px; max-width: calc(100% - 12px); padding:5px 6px 6px; }
+  .build-toolbar-title { gap:5px; }
+  .build-toolbar-title strong { font-size:9px; }
+  .build-toolbar-title span { font-size:8px; }
+  .hud-build-panel .shop-item.build-chip { flex-basis:56px; width:56px; min-width:56px; min-height:52px; }
+  .hud-build-panel .shop-item.build-chip.edit-tool { flex-basis:66px; width:66px; min-width:66px; }
+  .hud-build-panel .shop-item.build-chip .shop-icon { font-size:18px; }
+  .hud-build-panel .shop-item.build-chip strong { font-size:7px; min-height:14px; }
+  .hud-build-panel .shop-item.build-chip small { font-size:8px; }
+}
+@media(max-width:480px) {
+  .build-toolbar-head { gap:5px; }
+  .build-toolbar-title { flex-direction:column; align-items:flex-start; gap:2px; }
+  .build-toolbar-actions .build-turn-pill { display:none; }
+}
