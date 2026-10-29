@@ -27,7 +27,7 @@ const ITEMS = [
   { type: 'jumpboots', name: 'Ugrócsizma', icon: '🥾', price: 35, desc: 'A következő ugrásod magasabb' }
 ];
 const EDIT_TOOLS = [
-  { type: 'delete-tool', name: 'Objektum törlése', icon: '🗑️', price: 8, desc: 'Egy pályatárgy eltávolítása' },
+  { type: 'delete-tool', name: 'Objektum törlése', icon: '🗑️', price: 8, desc: 'Saját 8, másé 16 arany' },
   { type: 'move-tool', name: 'Objektum mozgatása', icon: '↔️', price: 12, desc: 'Egy pályatárgy áthelyezése' }
 ];
 let roomState = null;
@@ -91,6 +91,7 @@ function getMe() { return roomState?.players?.find(p => p.id === socket.id); }
 function getLivePlayer(id) { return livePlayers.find(p => p.id === id); }
 function switchScreen(which) {
   currentScreen = which;
+  document.body.classList.toggle('game-mode', which === 'game');
   screenHome.classList.toggle('hidden', which !== 'home');
   screenLobby.classList.toggle('hidden', which !== 'lobby');
   screenGame.classList.toggle('hidden', which !== 'game');
@@ -102,9 +103,9 @@ function emitAck(event, data, successMessage) {
   });
 }
 
-socket.on('connect', () => { $('connectionLabel').textContent = 'Kapcsolódva'; $('connectionLabel').style.color = '#78e5a8'; });
-socket.on('disconnect', () => { $('connectionLabel').textContent = 'Kapcsolat megszakadt'; $('connectionLabel').style.color = '#ff7c8d'; toast('Megszakadt a kapcsolat a szerverrel.'); });
-socket.on('connect_error', () => { $('connectionLabel').textContent = 'Kapcsolódási hiba'; });
+socket.on('connect', () => { $('connectionLabel').textContent = 'Kapcsolódva'; $('connectionLabel').style.color = '#78e5a8'; const hud = $('gameConnectionLabel'); if (hud) { hud.textContent = 'Kapcsolódva'; hud.style.color = '#78e5a8'; } });
+socket.on('disconnect', () => { $('connectionLabel').textContent = 'Kapcsolat megszakadt'; $('connectionLabel').style.color = '#ff7c8d'; const hud = $('gameConnectionLabel'); if (hud) { hud.textContent = 'Kapcsolat megszakadt'; hud.style.color = '#ff7c8d'; } toast('Megszakadt a kapcsolat a szerverrel.'); });
+socket.on('connect_error', () => { $('connectionLabel').textContent = 'Kapcsolódási hiba'; const hud = $('gameConnectionLabel'); if (hud) { hud.textContent = 'Kapcsolódási hiba'; hud.style.color = '#ff7c8d'; } });
 socket.on('roomState', next => {
   const priorPhase = roomState?.phase;
   const priorCode = roomState?.code;
@@ -269,18 +270,48 @@ function renderLobby() {
 function renderGame() {
   if (!roomState) return;
   switchScreen('game');
+  screenGame.classList.remove('end-screen');
   selectedBuildType = roomState.phase === 'build' && roomState.currentBuilderId === socket.id ? selectedBuildType : null;
   screenGame.innerHTML = `
-    <div class="game-top"><div class="game-title"><h1>🐾 ÁllatKáosz</h1><p id="gameStatusText">${escapeHtml(roomState.statusMessage || '')}</p></div><div class="game-statuses"><div class="status-chip">🏁 Kör <b id="roundChip">${roomState.roundNo}/${roomState.settings.rounds}</b></div><div class="status-chip">🪙 Arany <b id="myGoldValue">${getMe()?.gold ?? 0}</b></div><button class="ghost-button" id="exitGameBtn">Kilépés</button></div></div>
-    <div class="game-layout"><section class="game-main-col"><div class="world-frame"><canvas id="worldCanvas" width="1100" height="620" tabindex="0" aria-label="Az egyetlen közös akadálypálya. Kattints a pályára, majd W ugrás"></canvas><div class="canvas-overlay"><div class="canvas-pill" id="canvasModeLabel">🏃 VERSENY</div><div class="canvas-timer" id="canvasTimerBox"><small id="inCanvasTimerLabel">VERSENYIDŐ</small><strong id="inCanvasTimer">00:45</strong></div><div class="canvas-pill right">🌍 <strong id="canvasMapName">${escapeHtml(MAPS[roomState.settings?.mapTheme || 'meadow'] || 'Kezdő mező')}</strong> · 🏁 Cél · TAB: pontok</div></div>
+    <div class="world-frame game-fullscreen-world">
+      <canvas id="worldCanvas" width="1100" height="620" tabindex="0" aria-label="ÁllatKáosz játékpálya. Mozgás: A/D vagy nyilak, ugrás: W"></canvas>
+      <header class="game-hud-top">
+        <div class="game-hud-left">
+          <div class="hud-brand"><span>🐾</span><strong>ÁLLAT<span>KÁOSZ</span></strong></div>
+          <div class="hud-stat">🏁 Kör <b id="roundChip">${roomState.roundNo}/${roomState.settings.rounds}</b></div>
+          <div class="hud-stat">🪙 Arany <b id="myGoldValue">${getMe()?.gold ?? 0}</b></div>
+          <div id="gameStatusText" class="hud-status">${escapeHtml(roomState.statusMessage || '')}</div>
+        </div>
+        <div class="canvas-timer" id="canvasTimerBox"><small id="inCanvasTimerLabel">VERSENYIDŐ</small><strong id="inCanvasTimer">00:45</strong></div>
+        <div class="game-hud-right">
+          <span class="hud-connection"><span class="hud-connection-dot"></span><span id="gameConnectionLabel">${socket.connected ? 'Kapcsolódva' : 'Kapcsolódás…'}</span></span>
+          <button class="ghost-button hud-button" id="gameHelpButton" type="button">❔ Súgó</button>
+          <button class="ghost-button hud-button" id="fullscreenButton" type="button" title="Teljes képernyő">⛶ Teljes képernyő</button>
+          <button class="ghost-button hud-button exit-button" id="exitGameBtn" type="button">Kilépés</button>
+        </div>
+      </header>
+      <div class="canvas-overlay">
+        <div class="canvas-pill" id="canvasModeLabel">🏃 VERSENY</div>
+        <div class="canvas-pill right">🌍 <strong id="canvasMapName">${escapeHtml(MAPS[roomState.settings?.mapTheme || 'meadow'] || 'Kezdő mező')}</strong> · 🏁 Cél · TAB: pontok</div>
+      </div>
       <div class="phase-center-notice hidden" id="phaseCenterNotice"><span class="phase-center-icon" id="phaseCenterIcon">🔨</span><div><strong id="phaseCenterTitle">XY MOST ÉPÍTKEZIK</strong><span id="phaseCenterSubtitle">Válassz tárgyakat, és használd fel az aranyad!</span></div></div>
       <div class="race-countdown hidden" id="raceCountdown" aria-live="polite"><strong id="raceCountdownNumber">3</strong><span id="raceCountdownLabel">Felkészülni!</span></div>
       <div class="last-round-banner hidden" id="lastRoundBanner">🔥 UTOLSÓ KÖR! GYERÜNK, VADÁLLATOK! 🔥</div>
       <section class="score-overlay hidden" id="scoreOverlay" aria-label="Pontok és arany"><div class="score-overlay-head"><strong>🏆 Pontok és arany</strong><button type="button" id="closeScoreButton" aria-label="Bezárás">×</button></div><div class="score-list" id="scoreList"></div><small>Engedd fel a TAB billentyűt az ablak bezárásához.</small></section>
-    </div>
-      <div class="game-instructions" id="gameInstructions"><span><b>IRÁNYÍTÁS</b> <span class="keycap">A</span><span class="keycap">D</span> / <span class="keycap">←</span><span class="keycap">→</span> futás · <span class="keycap">W</span> ugrás (tartsd nyomva a nagyobb ugráshoz) · <span class="keycap">TAB</span> pontok</span><span id="progressInstruction">Aranyat kapsz a megtett útért is.</span></div>
-    </section><aside class="side-column"><section class="panel build-panel hidden" id="buildPanel"></section><section class="panel side-card chat-card"><h3>💬 Játékchat</h3><div class="chat-messages" id="chatMessages"></div><form class="chat-entry" id="chatForm"><input id="chatInput" maxlength="260" placeholder="Üzenet a csapatnak…" autocomplete="off"><button type="submit" aria-label="Küldés">➤</button></form></section><section class="panel side-card"><h3>🧰 A táskád</h3><div id="inventoryInfo" class="muted" style="font-size:11px;line-height:1.7"></div></section></aside></div>`;
-  $('exitGameBtn').addEventListener('click', () => { socket.emit('leaveRoom'); roomState = null; livePlayers = []; currentRenderedPhase = null; switchScreen('home'); });
+      <section class="panel side-card chat-card hud-chat-card"><h3>💬 Játékchat <small>Szoba ${escapeHtml(roomState.code)}</small></h3><div class="chat-messages" id="chatMessages"></div><form class="chat-entry" id="chatForm"><input id="chatInput" maxlength="260" placeholder="Üzenet a csapatnak…" autocomplete="off"><button type="submit" aria-label="Küldés">➤</button></form></section>
+      <section class="panel build-panel hud-build-panel hidden" id="buildPanel"></section>
+      <div class="game-controls-hint"><span><b>A/D</b> vagy <b>←/→</b> mozgás</span><span><b>W</b> ugrás</span><span><b>TAB</b> pontok</span></div>
+    </div>`;
+
+  $('exitGameBtn').addEventListener('click', () => { if (document.fullscreenElement) document.exitFullscreen().catch(() => {}); socket.emit('leaveRoom'); roomState = null; livePlayers = []; currentRenderedPhase = null; switchScreen('home'); });
+  $('gameHelpButton').addEventListener('click', () => $('helpModal').classList.remove('hidden'));
+  $('fullscreenButton').addEventListener('click', async () => {
+    try {
+      if (!document.fullscreenElement) await document.documentElement.requestFullscreen();
+      else await document.exitFullscreen();
+    } catch { toast('A teljes képernyő módot a böngésző nem engedélyezte.'); }
+  });
+  updateFullscreenButton();
   $('chatForm').addEventListener('submit', e => { e.preventDefault(); const text = $('chatInput').value.trim(); if (!text) return; socket.emit('chat', { text }, result => { if (!result?.ok) toast(result?.error || 'Az üzenet nem küldhető el.'); }); $('chatInput').value = ''; $('chatInput').blur(); $('worldCanvas')?.focus({ preventScroll: true }); });
   $('closeScoreButton').addEventListener('click', () => $('scoreOverlay').classList.add('hidden'));
   const canvas = $('worldCanvas');
@@ -290,8 +321,6 @@ function renderGame() {
     mouseWorld = { x: ((e.clientX - rect.left) / rect.width) * CANVAS_W, y: ((e.clientY - rect.top) / rect.height) * CANVAS_H };
   });
   canvas.addEventListener('pointerleave', () => { mouseWorld = null; });
-  // Focus the playfield whenever a race begins, so W works straight away even
-  // if the previous screen had a focused button/input on this machine.
   canvas.focus({ preventScroll: true });
   canvas.addEventListener('click', e => {
     if (!roomState || roomState.phase !== 'build' || !selectedBuildType) return;
@@ -305,9 +334,11 @@ function renderGame() {
     if (selectedBuildType === 'delete-tool') {
       const target = findObstacleAt(rawX, rawY);
       if (!target) return toast('Kattints egy lerakott tárgyra a törléshez.');
+      const expectedCost = target.ownerId === socket.id ? 8 : 16;
+      if ((getMe()?.gold ?? 0) < expectedCost) return toast(`Ennek a tárgynak a törlése ${expectedCost} aranyba kerül.`);
       socket.emit('deleteObstacle', { id: target.id }, result => {
         if (!result?.ok) toast(result?.error || 'Nem sikerült törölni.');
-        else toast(`🗑️ Tárgy törölve. −8 arany. Maradt: ${result.gold}`);
+        else toast(`🗑️ Tárgy törölve. −${result.cost || expectedCost} arany. Maradt: ${result.gold}`);
       });
       return;
     }
@@ -316,10 +347,8 @@ function renderGame() {
       if (!movingObstacleId) {
         const target = findObstacleAt(rawX, rawY);
         if (!target) return toast('Először kattints arra a tárgyra, amelyet mozgatni szeretnél.');
-        movingObstacleId = target.id;
-        updateBuildControls();
-        toast('Most kattints az új helyre. A mozgatás 12 aranyba kerül.');
-        return;
+        movingObstacleId = target.id; updateBuildControls();
+        toast('Most kattints az új helyre. A mozgatás 12 aranyba kerül.'); return;
       }
       const target = roomState.obstacles.find(o => o.id === movingObstacleId);
       if (!target) { movingObstacleId = null; return toast('A kiválasztott tárgy már nem található.'); }
@@ -328,10 +357,8 @@ function renderGame() {
       socket.emit('moveObstacle', { id: movingObstacleId, x, groundY }, result => {
         if (!result?.ok) toast(result?.error || 'Nem sikerült áthelyezni.');
         else { movingObstacleId = null; toast(`↔️ Tárgy áthelyezve. −12 arany. Maradt: ${result.gold}`); updateBuildControls(); }
-      });
-      return;
+      }); return;
     }
-
     if (['shield', 'lifebuoy', 'jumpboots'].includes(selectedBuildType)) return toast('Ezt a segítséget a boltban a vásárlás gombbal aktiválhatod.');
     const type = selectedBuildType;
     const placementError = getBuildPlacementError(type, x, groundY);
@@ -345,8 +372,15 @@ function renderGame() {
   if (rafId) cancelAnimationFrame(rafId);
   lastTick = performance.now(); rafId = requestAnimationFrame(gameLoop);
 }
+function updateFullscreenButton() {
+  const button = $('fullscreenButton');
+  if (!button) return;
+  button.textContent = document.fullscreenElement ? '⤢ Kilépés a teljes képernyőből' : '⛶ Teljes képernyő';
+}
+document.addEventListener('fullscreenchange', updateFullscreenButton);
+
 function renderEndScreen() {
-  switchScreen('game'); currentRenderedPhase = 'ended';
+  switchScreen('game'); screenGame.classList.add('end-screen'); currentRenderedPhase = 'ended';
   const sorted = roomState.lastResults || [];
   const winner = sorted[0];
   screenGame.innerHTML = `<section class="panel end-layout"><div class="eyebrow">🏁 VERSENY VÉGE</div><h1>${winner ? `${ANIMALS[winner.animal]?.emoji || '🏆'} ${escapeHtml(winner.name)} nyert!` : 'Véget ért a verseny!'}</h1><p>A győztes az összes kör alatt szerzett pontok alapján dőlt el. Készen álltok a visszavágóra?</p><div class="results-list">${sorted.map((p,i)=>`<div class="result-row ${i===0?'winner':''}"><div class="result-place">${i+1}.</div><div class="result-animal">${ANIMALS[p.animal]?.emoji || '🐾'}</div><div class="result-details"><strong>${escapeHtml(p.name)} ${p.id===socket.id?'(Te)':''}</strong><small>🪙 ${p.gold} arany</small></div><div class="result-score">${p.score} pont</div></div>`).join('')}</div><div class="lobby-actions"><button class="ghost-button" id="endLeaveBtn">← Főmenü</button>${roomState.hostId===socket.id?'<button class="primary-button" id="restartGameBtn">🔄 Új verseny</button>':'<button class="primary-button" disabled>Várakozás a szobagazdára…</button>'}</div><p class="setting-note">A következő verseny ugyanazon a rövid pályán, új pontszámokkal indul; a szobabeállítások megmaradnak.</p></section>`;
@@ -453,20 +487,21 @@ function updateBuildControls() {
   const affordable = ITEMS.some(item => (me?.gold ?? 0) >= item.price) || EDIT_TOOLS.some(item => (me?.gold ?? 0) >= item.price);
   let helpText = 'Válassz tárgyat, majd kattints a pályára. Törlésnél kattints a tárgyra; mozgatásnál először válaszd ki a tárgyat, majd az új helyét.';
   if (selectedBuildType === 'move-tool' && movingObstacleId) helpText = 'Áthelyezés: kattints a pálya új pontjára. A célzónák és más tárgyak nem fedhetők le.';
-  else if (selectedBuildType === 'delete-tool') helpText = 'Törlés: kattints bármelyik pályatárgyra. A törlés 8 aranyba kerül.';
+  else if (selectedBuildType === 'delete-tool') helpText = 'Törlés: saját tárgy 8 arany, más játékosé 16 arany. Kattints a tárgyra.';
   else if (isMe && !affordable) helpText += ' Nincs elég aranyad új műveletre — kihagyhatod a körödet.';
   const obstacleIcons = { crate: '📦', saw: '⚙️', spikes: '🔺', spring: '🌀', barrel: '🛢️' };
   const obstacleNames = { crate: 'Láda', saw: 'Forgó fűrész', spikes: 'Tüskék', spring: 'Rugós kilövő', barrel: 'Hordó' };
-  const existingObstacleRows = (roomState.obstacles || []).map(o => `<div class="obstacle-admin-row"><div class="obstacle-admin-info"><span class="obstacle-admin-icon">${obstacleIcons[o.type] || '🧱'}</span><span><strong>${escapeHtml(obstacleNames[o.type] || 'Építmény')}</strong><small>${o.builtIn || o.ownerName === 'Pálya' ? 'Alap pályaelem' : `Építette: ${escapeHtml(o.ownerName || 'Játékos')}`} · X: ${Math.round(Number(o.x) || 0)}</small></span></div><button type="button" class="obstacle-delete-button" data-delete-obstacle="${escapeHtml(o.id)}" ${!isMe || (me?.gold ?? 0) < 8 ? 'disabled' : ''} title="Tárgy törlése 8 aranyért">🗑️ Törlés · 8🪙</button></div>`).join('');
-  panel.innerHTML = `<div class="build-top"><div><h3>🔨 Építkezési fázis</h3><p>${isMe ? `Aranyad: ${me?.gold ?? 0} · A saját időd alatt több tárgyat is elhelyezhetsz vagy módosíthatsz.` : `Most ${escapeHtml(builder?.name || 'egy játékos')} építkezik.`}</p></div><span class="build-turn-pill">${isMe?'TE JÖSSZ':'VÁRJ A SORODRA'}</span></div><div class="shop-grid">${cards}</div><div class="edit-tools-block"><h4>🛠️ Tárgyak kezelése</h4><div class="shop-grid edit-tool-grid">${editCards}</div></div><div class="obstacle-admin"><div class="obstacle-admin-heading"><h4>📋 Pályán lévő tárgyak</h4><small>${(roomState.obstacles || []).length} db · törlés 8 arany/tárgy</small></div><div class="obstacle-admin-list">${existingObstacleRows || '<div class="obstacle-admin-empty">Nincs lerakott tárgy.</div>'}</div></div><div class="build-footer"><span class="build-help">${escapeHtml(helpText)}</span>${isMe?'<button class="ghost-button" id="skipBuildBtn">Kész / Kihagyom →</button>':''}</div>`;
+  const existingObstacleRows = (roomState.obstacles || []).map(o => { const deleteCost = o.ownerId === socket.id ? 8 : 16; const ownerLabel = o.ownerId === socket.id ? 'Saját tárgy' : (o.builtIn || o.ownerName === 'Pálya' ? 'Alap pályaelem' : `Építette: ${escapeHtml(o.ownerName || 'Játékos')}`); return `<div class="obstacle-admin-row"><div class="obstacle-admin-info"><span class="obstacle-admin-icon">${obstacleIcons[o.type] || '🧱'}</span><span><strong>${escapeHtml(obstacleNames[o.type] || 'Építmény')}</strong><small>${ownerLabel} · X: ${Math.round(Number(o.x) || 0)}</small></span></div><button type="button" class="obstacle-delete-button" data-delete-obstacle="${escapeHtml(o.id)}" data-delete-cost="${deleteCost}" ${!isMe || (me?.gold ?? 0) < deleteCost ? 'disabled' : ''} title="Saját: 8 arany, másé: 16 arany">🗑️ Törlés · ${deleteCost}🪙</button></div>`; }).join('');
+  panel.innerHTML = `<div class="build-top"><div><h3>🔨 Építkezési fázis</h3><p>${isMe ? `Aranyad: ${me?.gold ?? 0} · A saját időd alatt több tárgyat is elhelyezhetsz vagy módosíthatsz.` : `Most ${escapeHtml(builder?.name || 'egy játékos')} építkezik.`}</p></div><span class="build-turn-pill">${isMe?'TE JÖSSZ':'VÁRJ A SORODRA'}</span></div><div class="shop-grid">${cards}</div><div class="edit-tools-block"><h4>🛠️ Tárgyak kezelése</h4><div class="shop-grid edit-tool-grid">${editCards}</div></div><div class="obstacle-admin"><div class="obstacle-admin-heading"><h4>📋 Pályán lévő tárgyak</h4><small>${(roomState.obstacles || []).length} db · saját törlése 8, másé 16 arany</small></div><div class="obstacle-admin-list">${existingObstacleRows || '<div class="obstacle-admin-empty">Nincs lerakott tárgy.</div>'}</div></div><div class="build-footer"><span class="build-help">${escapeHtml(helpText)}</span>${isMe?'<button class="ghost-button" id="skipBuildBtn">Kész / Kihagyom →</button>':''}</div>`;
   panel.querySelectorAll('[data-delete-obstacle]').forEach(btn => btn.addEventListener('click', () => {
     if (!isMe) return toast('Most nem te építkezel.');
     const id = btn.dataset.deleteObstacle;
-    if ((getMe()?.gold ?? 0) < 8) return toast('A tárgy törlése 8 aranyba kerül.');
+    const deleteCost = Number(btn.dataset.deleteCost || 8);
+    if ((getMe()?.gold ?? 0) < deleteCost) return toast(`A tárgy törlése ${deleteCost} aranyba kerül.`);
     selectedBuildType = null; movingObstacleId = null;
     socket.emit('deleteObstacle', { id }, result => {
       if (!result?.ok) toast(result?.error || 'Nem sikerült törölni a tárgyat.');
-      else { toast(`🗑️ Tárgy törölve. −${result.cost || 8} arany. Maradt: ${result.gold}`); updateBuildControls(); }
+      else { toast(`🗑️ Tárgy törölve. −${result.cost || deleteCost} arany. Maradt: ${result.gold}`); updateBuildControls(); }
     });
   }));
   panel.querySelectorAll('[data-item]').forEach(btn => btn.addEventListener('click', () => {

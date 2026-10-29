@@ -1,7 +1,7 @@
 ALLATKAOSZ — ONLINE 2D ALLATOS AKADALYVERSENY
 ================================================
 
-JAVITASOK EBBEN A VALTOZATBAN (1.9)
+JAVITASOK EBBEN A VALTOZATBAN (1.10)
 ---------------------------
 - A helyi karakter mozgasa helyben szimulalt; a halozati poziciok nem irjak felul minden frame-ben. Az ugrashoz gombpuffer es peremsegitseg van, a palya/platform utkozesek toleransabbak
 - A fizika fix 120 Hz-es lepesekkel fut, az ugrashoz 180 ms-os gombpuffer es 140 ms-os peremsegitseg tartozik; a tavoli karakterek pozicioja simitva jelenik meg
@@ -25,6 +25,8 @@ A prototipus fo jellemzoi
 - Pajzs vasarolhato; egy halalos talalatotol megved, es visszalok
 - Egyetlen rovid, fix palya tobb platformmal; az alapcsapdak adottak, a jatekosok epitmenyei a tovabbi korokben is megmaradnak
 - Epitmeny platformra, levegobe vagy viz fole is helyezheto; az atatlatszo elo-nezet a lerakas helyen marad. A ladan stabilan meg lehet allni/ugrani, a furesz, tuske es hordo veszelyes
+- Teljes kepernyos jatekter, a chat a bal also sarokban, a kor/arany/ido/kilepes a palyan beluli HUD-ban; nincs kulon oldalsav vagy felesleges taska-panel
+- Saját targy torlese 8 arany, mas jatekos vagy alap palyaelem torlese 16 arany
 - Chat es osszesitett ponttabla
 - A karakterek ot kulon vektoros SVG allatsprite-ot hasznalnak ket futolepes-pozicioval; a palya es a csapdak animalt, rajzolt megjelenesuek
 
@@ -133,7 +135,7 @@ A 1.6-os változatban a szobagazda 4 pályavilágból választhat: Kezdő mező,
 - A W ugrás változó magasságú: rövid megnyomásra alacsony ugrás, nyomva tartva fokozatosan magasabb; a Space továbbra sem ugrik.
 - A rajtnál egy védett téglalap van (x=0–260), ahová nem lehet építeni vagy tárgyat áthelyezni. A cél körüli védett mező szintén megmarad.
 - Új építkezési műveletek: pályán lévő objektum törlése 8 aranyért, illetve áthelyezése 12 aranyért. Az alap pályaobjektumok is módosíthatók; minden művelethez megfelelő arany és nem védett, üres célpont szükséges.
-- A tárgymozgatás két kattintásos: válaszd a Mozgatást, kattints az áthelyezendő objektumra, majd kattints az új helyére. A törlésnél a Törlés eszköz kiválasztása után a törlendő objektumra kell kattintani.
+- A tárgymozgatás két kattintásos: válaszd a Mozgatást, kattints az áthelyezendő objektumra, majd kattints az új helyére. A törlésnél a Törlés eszköz kiválasztása után a törlendő objektumra kell kattintani. Saját tárgy törlése 8 arany, más játékos vagy alap pályaelem törlése 16 arany.
 - Az új védett rajtzóna az építkezési fázisban zöld színnel, a célzóna pirossal látszik.
 
 FONTOS: A törlés és áthelyezés műveleteihez a játékos építkezési köre és a megfelelő aranymennyiség szükséges.
@@ -142,6 +144,17 @@ FONTOS: A törlés és áthelyezés műveleteihez a játékos építkezési kör
 1.9-AS FRISSÍTÉS – CÉLBA ÉRÉS, ÁLLATSPRITE-OK ÉS OBJEKTUMTÖRLÉS
 - A célba érő játékosok a chatben helyezést, pontjutalmat és aranyjutalmat kapnak kiírva; az első helyezett külön kiemelt üzenetet kap.
 - Frissített, részletesebb, két futó pózt tartalmazó SVG állatgrafikák: malac, kapibara, ló, pingvin és mosómedve.
-- Építkezési fázisban a pálya tárgyainak listájában mindegyik mellett külön Törlés gomb van. A beépített pályaelemek is törölhetők; a művelet 8 aranyba kerül. A pályán kattintással történő törlés is megmaradt.
+- Építkezési fázisban a pálya tárgyainak listájában mindegyik mellett külön Törlés gomb van. A beépített pályaelemek is törölhetők; mivel nem a játékos saját tárgyai, a művelet 16 aranyba kerül. A pályán kattintással történő törlés is megmaradt.
 - A törlés és mozgatás kijelölése elnézőbb kattintási területet kapott.
 - A rajt és a cél körüli építésmentes zóna látható védelmet kap.
+
+
+1.10 — TELJES KÉPERNYOS JATEKKEPERNYO
+-----------------------------------
+- A játék teljes ablakot kitöltő nézetet kap; a weboldal felső sávja játék közben eltűnik.
+- A kör, az arany, az idő, a kapcsolat állapota, a súgó, a teljes képernyő és a kilépés a játék HUD-jában van.
+- A chat keretes panelként a bal alsó sarokba került, az építkezési panel pedig csak az építkezési fázisban jelenik meg a jobb alsó sarokban.
+- A külön táska-panel kikerült a játékképernyőről, így több látszik a pályából.
+- A célba érkezési és jutalomüzenetek a játékbeli chatben maradnak.
+- Saját építmény törlése 8 arany, más játékos vagy alap pályaelem törlése 16 arany. A szerver ellenőrzi a tényleges költséget is.
+- A HUD teljes képernyő gombja böngészőszintű teljes képernyőt kér; a játék alapból is a teljes böngészőablakot kitölti.

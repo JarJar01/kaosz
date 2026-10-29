@@ -12,6 +12,7 @@ const GROUND_Y = 430;
 const SPAWN_SAFE_ZONE = { left: 0, right: 260, top: 315, bottom: 440 };
 const GOAL_SAFE_ZONE = { left: 948, right: 1098, top: 250, bottom: 422 };
 const OBJECT_DELETE_COST = 8;
+const OBJECT_DELETE_OTHER_COST = OBJECT_DELETE_COST * 2;
 const OBJECT_MOVE_COST = 12;
 const PLATFORM_LAYOUTS = {
   meadow: [
@@ -488,12 +489,14 @@ io.on('connection', socket => {
     const index = room.obstacles.findIndex(o => o.id === String(payload.id || ''));
     if (index < 0) return ack({ ok: false, error: 'A kiválasztott tárgy már nem található.' });
     const obstacle = room.obstacles[index];
-    if (p.gold < OBJECT_DELETE_COST) return ack({ ok: false, error: `A törlés ${OBJECT_DELETE_COST} aranyba kerül.` });
-    p.gold -= OBJECT_DELETE_COST;
+    // Your own object is cheaper to remove. Another player's object (and an original course obstacle) costs double.
+    const deleteCost = obstacle.ownerId === p.id ? OBJECT_DELETE_COST : OBJECT_DELETE_OTHER_COST;
+    if (p.gold < deleteCost) return ack({ ok: false, error: `Ennek a tárgynak a törlése ${deleteCost} aranyba kerül.` });
+    p.gold -= deleteCost;
     room.obstacles.splice(index, 1);
-    pushChat(room, 'RENDSZER', `🗑️ ${p.name} törölt egy építményt (${OBJECT_DELETE_COST} aranyért).`, true);
+    pushChat(room, 'RENDSZER', `🗑️ ${p.name} törölt egy építményt (${deleteCost} aranyért).`, true);
     emitRoom(room);
-    ack({ ok: true, gold: p.gold, cost: OBJECT_DELETE_COST });
+    ack({ ok: true, gold: p.gold, cost: deleteCost });
   });
 
   socket.on('moveObstacle', (payload = {}, ack = () => {}) => {
