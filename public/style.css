@@ -155,12 +155,12 @@
 /* Use the same illustrated animals in the lobby that appear on the course. */
 .animal-choice { min-height:112px; }
 .animal-sprite-preview { position:relative; display:block; width:64px; height:64px; overflow:hidden; margin:0 auto 3px; filter:drop-shadow(0 4px 4px #07132755); }
-.animal-sprite-preview img { position:absolute; top:0; left:0; display:block; width:128px; height:64px; max-width:none; object-fit:fill; }
+.animal-sprite-preview img { position:absolute; inset:0; display:block; width:64px; height:64px; max-width:none; object-fit:contain; }
 .animal-choice.selected .animal-sprite-preview { filter:drop-shadow(0 0 5px #ffe17b88) drop-shadow(0 4px 4px #07132755); }
 .animal-mini-sprite { position:relative; display:block; width:32px; height:32px; overflow:hidden; }
-.animal-mini-sprite img { position:absolute; top:0; left:0; width:64px; height:32px; max-width:none; display:block; }
+.animal-mini-sprite img { position:absolute; inset:0; width:32px; height:32px; max-width:none; object-fit:contain; display:block; }
 .player-avatar { overflow:hidden; }
-@media(max-width:760px) { .animal-choice { min-height:101px; } .animal-sprite-preview { width:52px; height:52px; } .animal-sprite-preview img { width:104px; height:52px; } }
+@media(max-width:760px) { .animal-choice { min-height:101px; } .animal-sprite-preview { width:52px; height:52px; } .animal-sprite-preview img { width:52px; height:52px; } }
 
 /* ÁllatKáosz 1.13 — immersive fullscreen game HUD. */
 body.game-mode { overflow: hidden; min-height: 100%; }

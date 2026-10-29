@@ -8,12 +8,21 @@ const ANIMALS = {
   penguin: { label: 'Pingvin', emoji: '🐧', color: '#202c42' },
   raccoon: { label: 'Mosómedve', emoji: '🦝', color: '#8b98a8' }
 };
-// Local SVG sprite sheets: two leg poses per animal, drawn as crisp vector art.
+// Original animal illustration pack: idle pose, 4-frame run sheet, jump and fall poses.
+// The pack lives inside the complete game at public/assets/animals/.
 const ANIMAL_SPRITES = Object.create(null);
 for (const animalType of Object.keys(ANIMALS)) {
-  const image = new Image();
-  image.src = `/assets/animals/${animalType}.svg`;
-  ANIMAL_SPRITES[animalType] = image;
+  const loadAnimalImage = (file) => {
+    const image = new Image();
+    image.src = `/assets/animals/${file}`;
+    return image;
+  };
+  ANIMAL_SPRITES[animalType] = {
+    idle: loadAnimalImage(`${animalType}.svg`),
+    run: loadAnimalImage(`${animalType}_run.svg`),
+    jump: loadAnimalImage(`${animalType}_jump.svg`),
+    fall: loadAnimalImage(`${animalType}_fall.svg`)
+  };
 }
 const MAPS = { meadow: '🌳 Kezdő mező', moon: '🌙 Hold', mars: '🔴 Mars', city: '🌆 Város' };
 const ITEMS = [
@@ -901,13 +910,13 @@ function physicsStep(dt, now) {
   if (motion.x >= CANVAS_W - 90 && Math.abs((GROUND_Y + motion.y) - getPlatformLayout()[getPlatformLayout().length - 1].top) <= 30) {
     if (now - lastSendAt > 55) {
       lastSendAt = now;
-      socket.emit('playerPosition', { x: motion.x, y: motion.y, face: motion.face, moving: motion.moving, jumping: motion.jumping });
+      socket.emit('playerPosition', { x: motion.x, y: motion.y, vy: motion.vy, face: motion.face, moving: motion.moving, jumping: motion.jumping });
     }
     return;
   }
   if (now - lastSendAt > 55) {
     lastSendAt = now;
-    socket.emit('playerPosition', { x: motion.x, y: motion.y, face: motion.face, moving: motion.moving, jumping: motion.jumping });
+    socket.emit('playerPosition', { x: motion.x, y: motion.y, vy: motion.vy, face: motion.face, moving: motion.moving, jumping: motion.jumping });
   }
 }
 function pushLocalMessage(message) { toast(message); }
@@ -1164,7 +1173,7 @@ function drawAnimalNameTag(ctx, p, x, base, bob) {
   const label = p.name || 'Játékos';
   const width = ctx.measureText(label).width;
   const tx = x - width / 2 - 8;
-  const ty = base - 68 + bob - (p.labelOffset || 0);
+  const ty = base - 86 + bob - (p.labelOffset || 0);
   ctx.fillStyle = p.id === socket.id ? '#153c54' : '#203752';
   roundRect(ctx, tx, ty, width + 16, 20, 7); ctx.fill();
   ctx.strokeStyle = p.id === socket.id ? '#ffe17c' : '#ffffffa0'; ctx.lineWidth = 1.5; ctx.stroke();
@@ -1172,28 +1181,47 @@ function drawAnimalNameTag(ctx, p, x, base, bob) {
   ctx.restore();
 }
 function drawAnimal(ctx,p,now) {
-  const type=ANIMALS[p.animal] ? p.animal : 'pig';
-  const bob=p.jumping ? -2.2 : (p.moving ? Math.abs(Math.sin(now/92))*2.4 : Math.sin(now/520+p.joinOrder)*.9);
-  const base=GROUND_Y+(p.y||0);
-  const x=p.x;
-  const sprite = ANIMAL_SPRITES[type];
-  if (sprite && sprite.complete && sprite.naturalWidth >= 160) {
-    ctx.save();
-    ctx.fillStyle = '#18465e42'; ctx.beginPath(); ctx.ellipse(x, base + 2, p.moving ? 13 : 14, 3, 0, 0, Math.PI * 2); ctx.fill();
-    ctx.translate(x, base + bob);
-    if (p.face < 0) ctx.scale(-1, 1);
-    if (p.moving) ctx.rotate(Math.sin(now / 70) * .055);
-    const frame = p.moving ? (Math.floor(now / 170) % 2) : 0;
-    const squash = p.jumping ? 1.035 : (p.moving ? 0.96 + Math.abs(Math.sin(now / 72)) * 0.06 : 1);
-    ctx.scale(1 / Math.sqrt(squash), squash);
-    ctx.drawImage(sprite, frame * 80, 0, 80, 80, -30, -58, 60, 60);
-    if ((p.shields || 0) > 0) {
-      ctx.strokeStyle = '#8ee9ffbb'; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(0, -23, 18, 22, 0, 0, Math.PI * 2); ctx.stroke();
-      ctx.fillStyle = '#b8f6ff'; ctx.font = 'bold 11px Nunito'; ctx.textAlign = 'center'; ctx.fillText('🛡', 0, -44);
+  const type = ANIMALS[p.animal] ? p.animal : 'pig';
+  const base = GROUND_Y + (p.y || 0);
+  const x = p.x;
+  const vy = Number(p.vy) || 0;
+  const bob = p.jumping ? -1.2 : (p.moving ? Math.abs(Math.sin(now / 125)) * 1.4 : Math.sin(now / 520 + (p.joinOrder || 1)) * 0.5);
+  const sprites = ANIMAL_SPRITES[type];
+  if (sprites) {
+    const airborne = !!p.jumping || Math.abs(Number(p.y) || 0) > 3;
+    const pose = airborne ? (vy > 45 ? 'fall' : 'jump') : (p.moving ? 'run' : 'idle');
+    const sprite = sprites[pose] || sprites.idle;
+    const imageReady = (img) => img && img.complete && img.naturalWidth > 0;
+    const runReady = pose === 'run' && imageReady(sprite) && sprite.naturalWidth >= 512 && sprite.naturalHeight >= 128;
+    const poseReady = imageReady(sprite) && sprite.naturalWidth >= 128 && sprite.naturalHeight >= 128;
+    const chosen = runReady || poseReady ? sprite : (imageReady(sprites.idle) ? sprites.idle : null);
+    if (chosen) {
+      ctx.save();
+      // Shadow stays on the ground while the animal jumps.
+      const shadowLift = Math.min(18, Math.max(0, -(Number(p.y) || 0) * 0.045));
+      ctx.fillStyle = '#18394f42';
+      ctx.beginPath();
+      ctx.ellipse(x, base + 2 + shadowLift, p.moving ? 17 : 18, 3.8, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.translate(x, base + bob);
+      if (p.face < 0) ctx.scale(-1, 1);
+      const width = 78, height = 78, destX = -width / 2, destY = -height + 4;
+      if (pose === 'run' && runReady) {
+        // The run sheet contains four 128x128 frames, at 8–12 fps.
+        const frame = Math.floor(now / 105) % 4;
+        ctx.drawImage(chosen, frame * 128, 0, 128, 128, destX, destY, width, height);
+      } else {
+        ctx.drawImage(chosen, destX, destY, width, height);
+      }
+      if ((p.shields || 0) > 0) {
+        ctx.strokeStyle = '#8ee9ffcc'; ctx.lineWidth = 2.4;
+        ctx.beginPath(); ctx.ellipse(0, -37, 25, 30, 0, 0, Math.PI * 2); ctx.stroke();
+        ctx.fillStyle = '#b8f6ff'; ctx.font = 'bold 12px Nunito'; ctx.textAlign = 'center'; ctx.fillText('🛡', 0, -65);
+      }
+      ctx.restore();
+      drawAnimalNameTag(ctx, p, x, base, bob);
+      return;
     }
-    ctx.restore();
-    drawAnimalNameTag(ctx, p, x, base, bob);
-    return;
   }
   ctx.save();
   // shadow

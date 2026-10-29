@@ -1,22 +1,47 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 100" width="120" height="100">
-  <!-- Capybara / Bence -->
-  <ellipse cx="60" cy="55" rx="35" ry="23" fill="#b0733e" stroke="#663c18" stroke-width="3"/>
-  <!-- Body contour -->
-  <path d="M 40 40 Q 55 35 70 40" stroke="#d49b6a" stroke-width="3" fill="none" stroke-linecap="round" opacity="0.8"/>
-  <!-- Tail -->
-  <path d="M 26 56 Q 20 50 24 45" stroke="#663c18" stroke-width="3" fill="none" stroke-linecap="round"/>
-  <!-- Ears -->
-  <circle cx="52" cy="34" r="5" fill="#b0733e" stroke="#663c18" stroke-width="2.5"/>
-  <!-- Snout / Head front -->
-  <ellipse cx="90" cy="56" rx="14" ry="12" fill="#d9ad82" stroke="#663c18" stroke-width="2.5"/>
-  <!-- Eye -->
-  <circle cx="78" cy="45" r="5.5" fill="#fff" stroke="#663c18" stroke-width="2"/>
-  <circle cx="80" cy="45" r="2.5" fill="#222"/>
-  <!-- Nose dot -->
-  <circle cx="101" cy="56" r="2" fill="#663c18"/>
-  <!-- Legs -->
-  <rect x="44" y="70" width="8" height="20" rx="3" fill="#9c6334" stroke="#663c18" stroke-width="2.5"/>
-  <rect x="68" y="70" width="8" height="20" rx="3" fill="#9c6334" stroke="#663c18" stroke-width="2.5"/>
-  <path d="M 44 86 c 0 4 8 4 8 0 Z" fill="#523013"/>
-  <path d="M 68 86 c 0 4 8 4 8 0 Z" fill="#523013"/>
-</svg>
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" role="img" aria-label="Kapibara idle"><defs>
+      <linearGradient id="groundShade" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1b2430" stop-opacity=".03"/><stop offset="1" stop-color="#111827" stop-opacity=".24"/></linearGradient>
+      <linearGradient id="pinkBody" x1="0" y1="0" x2=".1" y2="1"><stop stop-color="#ffb7c7"/><stop offset=".58" stop-color="#f58fa8"/><stop offset="1" stop-color="#d96383"/></linearGradient>
+      <linearGradient id="brownBody" x1="0" y1="0" x2=".15" y2="1"><stop stop-color="#bd8a55"/><stop offset=".55" stop-color="#9b683c"/><stop offset="1" stop-color="#69472e"/></linearGradient>
+      <linearGradient id="horseBody" x1="0" y1="0" x2=".1" y2="1"><stop stop-color="#d89a57"/><stop offset=".52" stop-color="#a96a39"/><stop offset="1" stop-color="#754529"/></linearGradient>
+      <linearGradient id="grayBody" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#c1c9ce"/><stop offset=".55" stop-color="#909ba2"/><stop offset="1" stop-color="#68737c"/></linearGradient>
+      <linearGradient id="penguinBody" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#3d4a5d"/><stop offset=".5" stop-color="#202b3a"/><stop offset="1" stop-color="#111923"/></linearGradient>
+      <linearGradient id="belly" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#fffef4"/><stop offset="1" stop-color="#e7e8e2"/></linearGradient>
+      <linearGradient id="hoof" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#695246"/><stop offset="1" stop-color="#30262b"/></linearGradient>
+      <radialGradient id="eyeGlow" cx="35%" cy="25%"><stop stop-color="#ffffff"/><stop offset="1" stop-color="#d6e3ed"/></radialGradient>
+      <filter id="softShadow" x="-30%" y="-30%" width="160%" height="180%"><feGaussianBlur stdDeviation="2"/></filter>
+    </defs><g transform="translate(0 0)">
+      <ellipse cx="64" cy="111" rx="38" ry="4.5" fill="#101820" opacity=".2" filter="url(#softShadow)"/>
+      <g transform="rotate(0 43 82)" opacity=".82">
+      <path d="M 39.6 81 Q 46.9 80 46.5 89.52 L 46.5 99.86 Q 43 105.56 39.5 99.86 L 39.0 88.58 Z" fill="#895a38" stroke="#5a3929" stroke-width="1.8" stroke-linejoin="round"/>
+      <ellipse cx="43.2" cy="101.74000000000001" rx="4.3" ry="3.384" fill="#895a38" stroke="#5a3929" stroke-width="1.3"/>
+      <path d="M 40.8 86.7 Q 43 89.52 44.2 91.4" fill="none" stroke="#ffffff" stroke-opacity=".35" stroke-width="1.2" stroke-linecap="round"/>
+    </g><g transform="rotate(0 73 81)" opacity=".82">
+      <path d="M 69.6 80 Q 76.9 79 76.5 88.52 L 76.5 98.86 Q 73 104.56 69.5 98.86 L 69.0 87.58 Z" fill="#895a38" stroke="#5a3929" stroke-width="1.8" stroke-linejoin="round"/>
+      <ellipse cx="73.2" cy="100.74000000000001" rx="4.3" ry="3.384" fill="#895a38" stroke="#5a3929" stroke-width="1.3"/>
+      <path d="M 70.8 85.7 Q 73 88.52 74.2 90.4" fill="none" stroke="#ffffff" stroke-opacity=".35" stroke-width="1.2" stroke-linecap="round"/>
+    </g>
+      <path d="M 28 74 Q 17 71 23 64 Q 29 60 29 68" fill="none" stroke="#865537" stroke-width="4" stroke-linecap="round"/>
+      <ellipse cx="58" cy="77" rx="34" ry="22" fill="url(#brownBody)" stroke="#68442c" stroke-width="2.2"/>
+      <ellipse cx="45" cy="65" rx="19" ry="6" fill="#e6bd8d" opacity=".24"/>
+      <path d="M 42 90 Q 58 96 78 88" fill="none" stroke="#6f482d" stroke-width="1.4" opacity=".75"/>
+      <!-- sloped capybara head and blunt muzzle -->
+      <path d="M 73 60 Q 77 43 91 42 Q 102 43 108 55 L 112 66 Q 108 75 96 73 L 80 70 Z" fill="url(#brownBody)" stroke="#68442c" stroke-width="2"/>
+      <ellipse cx="107" cy="65" rx="7.5" ry="5.8" fill="#6f492f" stroke="#563725" stroke-width="1.5"/>
+      <ellipse cx="112" cy="64" rx="2" ry="1.7" fill="#171b20"/>
+      <path d="M 81 47 Q 77 37 83 35 Q 90 35 91 45 Z" fill="#9d6c43" stroke="#68442c" stroke-width="1.7"/>
+      <ellipse cx="96" cy="51" rx="4.1" ry="4.6" fill="url(#eyeGlow)" stroke="#543729" stroke-width="1.1"/>
+      <ellipse cx="97" cy="52" rx="2" ry="2.7" fill="#17191d"/><circle cx="97.4" cy="51" r=".8" fill="#fff"/>
+      <path d="M 87 66 Q 92 69 97 67" stroke="#4b3023" stroke-width="1.2" fill="none" stroke-linecap="round"/>
+      <!-- small coat flecks -->
+      <g fill="#e5bf92" opacity=".55"><circle cx="43" cy="72" r="1.2"/><circle cx="51" cy="83" r=".9"/><circle cx="63" cy="68" r="1.1"/><circle cx="69" cy="82" r="1.2"/><circle cx="38" cy="80" r=".8"/></g>
+      <g transform="rotate(0 46 84)" opacity="1">
+      <path d="M 42.6 83 Q 49.9 82 49.5 91.52 L 49.5 101.86 Q 46 107.56 42.5 101.86 L 42.0 90.58 Z" fill="#a8754c" stroke="#5a3929" stroke-width="1.8" stroke-linejoin="round"/>
+      <ellipse cx="46.2" cy="103.74000000000001" rx="4.3" ry="3.384" fill="#a8754c" stroke="#5a3929" stroke-width="1.3"/>
+      <path d="M 43.8 88.7 Q 46 91.52 47.2 93.4" fill="none" stroke="#ffffff" stroke-opacity=".35" stroke-width="1.2" stroke-linecap="round"/>
+    </g><g transform="rotate(0 77 83)" opacity="1">
+      <path d="M 73.6 82 Q 80.9 81 80.5 90.52 L 80.5 100.86 Q 77 106.56 73.5 100.86 L 73.0 89.58 Z" fill="#a8754c" stroke="#5a3929" stroke-width="1.8" stroke-linejoin="round"/>
+      <ellipse cx="77.2" cy="102.74000000000001" rx="4.3" ry="3.384" fill="#a8754c" stroke="#5a3929" stroke-width="1.3"/>
+      <path d="M 74.8 87.7 Q 77 90.52 78.2 92.4" fill="none" stroke="#ffffff" stroke-opacity=".35" stroke-width="1.2" stroke-linecap="round"/>
+    </g>
+      <path d="M 58 58 Q 70 55 77 61" fill="none" stroke="#f7dfbb" stroke-width="2" opacity=".3" stroke-linecap="round"/>
+    </g></svg>

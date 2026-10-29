@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" role="img" aria-label="Mosómedve jump"><defs>
+      <linearGradient id="groundShade" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1b2430" stop-opacity=".03"/><stop offset="1" stop-color="#111827" stop-opacity=".24"/></linearGradient>
+      <linearGradient id="pinkBody" x1="0" y1="0" x2=".1" y2="1"><stop stop-color="#ffb7c7"/><stop offset=".58" stop-color="#f58fa8"/><stop offset="1" stop-color="#d96383"/></linearGradient>
+      <linearGradient id="brownBody" x1="0" y1="0" x2=".15" y2="1"><stop stop-color="#bd8a55"/><stop offset=".55" stop-color="#9b683c"/><stop offset="1" stop-color="#69472e"/></linearGradient>
+      <linearGradient id="horseBody" x1="0" y1="0" x2=".1" y2="1"><stop stop-color="#d89a57"/><stop offset=".52" stop-color="#a96a39"/><stop offset="1" stop-color="#754529"/></linearGradient>
+      <linearGradient id="grayBody" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#c1c9ce"/><stop offset=".55" stop-color="#909ba2"/><stop offset="1" stop-color="#68737c"/></linearGradient>
+      <linearGradient id="penguinBody" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#3d4a5d"/><stop offset=".5" stop-color="#202b3a"/><stop offset="1" stop-color="#111923"/></linearGradient>
+      <linearGradient id="belly" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#fffef4"/><stop offset="1" stop-color="#e7e8e2"/></linearGradient>
+      <linearGradient id="hoof" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#695246"/><stop offset="1" stop-color="#30262b"/></linearGradient>
+      <radialGradient id="eyeGlow" cx="35%" cy="25%"><stop stop-color="#ffffff"/><stop offset="1" stop-color="#d6e3ed"/></radialGradient>
+      <filter id="softShadow" x="-30%" y="-30%" width="160%" height="180%"><feGaussianBlur stdDeviation="2"/></filter>
+    </defs><g transform="translate(0 -4)">
+      <ellipse cx="63" cy="111" rx="39" ry="4.5" fill="#101820" opacity=".22" filter="url(#softShadow)"/>
+      <g transform="rotate(34 42 82)" opacity=".82">
+      <path d="M 38.6 81 Q 45.9 80 45.5 89.6 L 45.5 100.05 Q 42 105.8 38.5 100.05 L 38.0 88.65 Z" fill="#7d858b" stroke="#4a535b" stroke-width="1.8" stroke-linejoin="round"/>
+      <ellipse cx="42.2" cy="101.95" rx="4.3" ry="3.42" fill="#7d858b" stroke="#4a535b" stroke-width="1.3"/>
+      <path d="M 39.8 86.75 Q 42 89.6 43.2 91.5" fill="none" stroke="#ffffff" stroke-opacity=".35" stroke-width="1.2" stroke-linecap="round"/>
+    </g><g transform="rotate(-29 71 81)" opacity=".82">
+      <path d="M 67.6 80 Q 74.9 79 74.5 88.6 L 74.5 99.05 Q 71 104.8 67.5 99.05 L 67.0 87.65 Z" fill="#7d858b" stroke="#4a535b" stroke-width="1.8" stroke-linejoin="round"/>
+      <ellipse cx="71.2" cy="100.95" rx="4.3" ry="3.42" fill="#7d858b" stroke="#4a535b" stroke-width="1.3"/>
+      <path d="M 68.8 85.75 Q 71 88.6 72.2 90.5" fill="none" stroke="#ffffff" stroke-opacity=".35" stroke-width="1.2" stroke-linecap="round"/>
+    </g>
+      <!-- striped ring tail -->
+      <path d="M 34 75 C 18 65 17 85 24 91 C 31 98 43 87 34 78" fill="none" stroke="#717a82" stroke-width="11" stroke-linecap="round"/>
+      <path d="M 25 72 C 20 77 22 82 27 83 M 26 89 C 30 91 35 86 35 82" fill="none" stroke="#27303a" stroke-width="4.2" stroke-linecap="round"/>
+      <ellipse cx="57" cy="77" rx="31" ry="21" fill="url(#grayBody)" stroke="#4d565f" stroke-width="2.1"/>
+      <ellipse cx="46" cy="65" rx="16" ry="5" fill="#ffffff" opacity=".2"/>
+      <path d="M 76 61 Q 80 43 94 45 Q 105 47 109 59 L 112 67 Q 108 75 97 73 L 80 70 Z" fill="url(#grayBody)" stroke="#4d565f" stroke-width="2"/>
+      <!-- ears -->
+      <path d="M 82 49 Q 76 35 84 33 Q 91 36 92 48 Z" fill="#89939a" stroke="#4d565f" stroke-width="1.8"/>
+      <path d="M 85 43 L 84 38 L 88 44 Z" fill="#dca6a2"/>
+      <path d="M 98 48 Q 104 37 109 43 L 107 53 Z" fill="#89939a" stroke="#4d565f" stroke-width="1.8"/>
+      <path d="M 103 48 L 106 45 L 104 51 Z" fill="#dca6a2"/>
+      <!-- recognizable raccoon eye mask -->
+      <path d="M 82 55 Q 88 48 95 53 L 100 58 L 106 55 Q 108 62 102 65 L 96 62 L 88 64 Q 81 62 82 55 Z" fill="#303740" stroke="#222831" stroke-width="1.2"/>
+      <ellipse cx="90" cy="57" rx="3.4" ry="4" fill="url(#eyeGlow)"/><ellipse cx="91" cy="58" rx="1.7" ry="2.5" fill="#161b20"/><circle cx="91.4" cy="57" r=".7" fill="#fff"/>
+      <ellipse cx="108" cy="65" rx="6" ry="5" fill="#bac0c3" stroke="#4d565f" stroke-width="1.4"/>
+      <ellipse cx="112" cy="64" rx="1.7" ry="1.4" fill="#242a30"/>
+      <path d="M 97 70 Q 101 74 105 70" fill="none" stroke="#4d565f" stroke-width="1.2" stroke-linecap="round"/>
+      <path d="M 44 86 Q 60 94 73 86" fill="none" stroke="#e5e7e9" stroke-opacity=".4" stroke-width="1.7"/>
+      <g transform="rotate(-34 46 84)" opacity="1">
+      <path d="M 42.6 83 Q 49.9 82 49.5 91.6 L 49.5 102.05 Q 46 107.8 42.5 102.05 L 42.0 90.65 Z" fill="#939ca2" stroke="#4a535b" stroke-width="1.8" stroke-linejoin="round"/>
+      <ellipse cx="46.2" cy="103.95" rx="4.3" ry="3.42" fill="#939ca2" stroke="#4a535b" stroke-width="1.3"/>
+      <path d="M 43.8 88.75 Q 46 91.6 47.2 93.5" fill="none" stroke="#ffffff" stroke-opacity=".35" stroke-width="1.2" stroke-linecap="round"/>
+    </g><g transform="rotate(29 76 83)" opacity="1">
+      <path d="M 72.6 82 Q 79.9 81 79.5 90.6 L 79.5 101.05 Q 76 106.8 72.5 101.05 L 72.0 89.65 Z" fill="#939ca2" stroke="#4a535b" stroke-width="1.8" stroke-linejoin="round"/>
+      <ellipse cx="76.2" cy="102.95" rx="4.3" ry="3.42" fill="#939ca2" stroke="#4a535b" stroke-width="1.3"/>
+      <path d="M 73.8 87.75 Q 76 90.6 77.2 92.5" fill="none" stroke="#ffffff" stroke-opacity=".35" stroke-width="1.2" stroke-linecap="round"/>
+    </g>
+    </g></svg>
