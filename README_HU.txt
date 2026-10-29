@@ -3,11 +3,13 @@ ALLATKAOSZ — ONLINE 2D ALLATOS AKADALYVERSENY
 
 JAVITASOK EBBEN A VALTOZATBAN
 ---------------------------
-- A mozgasi csomag megorzi a karakter nevet es allatfajtat, ez csokkenti a karakter visszavaltasat/villogasat
+- A helyi karakter mozgasa helyben szimulalt; a halozati poziciok nem irjak felul minden frame-ben, ez megszunteti az ugraskori razkodast
+- A fizika fix 120 Hz-es lepesekkel fut, a tavoli karakterek pozicioja simitva jelenik meg
+- Leeseskor a szerverrel egyeztetett ujraeles tortenik
 - HALAL vagy pajzsos visszalokes utan a kliens koveti a szerver poziciojat
 - A jatekosok a bal oldali rajtplatformon kissé eltolva indulnak, a nevtablakat negy sorban rendezi a jatek
 - A TAB-os ponttabla a jatek kozben jelenik meg, a Space nem ugras
-- Az epitmeny csak valodi platformra helyezheto; valasztaskor szellem-elonezet latszik a palyan
+- Az epitmenyek a palya barmely lathato pontjara elhelyezhetok; valasztaskor egermutatohoz kotott szellem-elonezet latszik
 
 A prototipus fo jellemzoi
 ------------------------
@@ -22,7 +24,7 @@ A prototipus fo jellemzoi
 - 5 epitmeny: csapdalada, forgo furesz, tuskek, rugos kilovo, gurulo hordo
 - Pajzs vasarolhato; egy halalos talalatotol megved, es visszalok
 - Egyetlen rovid, fix palya tobb platformmal; az alapcsapdak adottak, a jatekosok epitmenyei a tovabbi korokben is megmaradnak
-- Epitmenyt csak valodi fuves platformra lehet elhelyezni; a valasztott targy atatlatszo elonezete mutatja a celhelyet
+- Epitmeny platformra, levegobe vagy viz fole is helyezheto; az atatlatszo elo-nezet mutatja a pontos helyet
 - Chat es osszesitett ponttabla
 - A menu grafikaval, a karakterek es a palya pedig animalt, rajzolt megjelenessel keszulnek
 
@@ -60,8 +62,8 @@ A / Bal nyil: balra
 D / Jobb nyil: jobbra
 W: ugras (a Space nem ugrik)
 TAB: ponttabla es arany megjelenitese (nyomva tartva)
-Epitkezeskor: valassz egy epitmeny-ikont a jobb oldali panelen, majd kattints a fuves platformra. A levegobe es viz fole nem lehet epiteni.
+Epitkezeskor: valassz egy epitmeny-ikont a jobb oldali panelen, mozgassd az egeret a kivant helyre, majd kattints. A palya barmely lathato pontjara epithetsz, platformra, levegobe es viz fole is. A kurzor mellett az atatlatszo epitmeny mutatja a lerakas helyet.
 
 MEGJEGYZES
 ----------
-Javitott valtozat: egy rovid, fix palya; TAB-os ponttabla; W billentyus ugras; animalt allatkarakterek; platformhoz kotott epitkezes. A JavaScript fajlok szintaxisellenorzese sikeres volt, de ebben a letrehozasi kornyezetben az npm csomagok letoltese idotullepes miatt nem fejezodott be, ezert teljes, tobbgepes futtatasi tesztet nem tudtam lefuttatni. Az elso inditaskor a start.bat probalja telepiteni a fuggosegeket.
+Javitott valtozat: rovid, fix palya; TAB-os ponttabla; W billentyus ugras; animalt allatkarakterek; stabilitast javito fixlepeses fizika; barmely palyaponton elhelyezheto epitmenyek. A JavaScript fajlok szintaxisellenorzese sikeres volt, de ebben a letrehozasi kornyezetben az npm csomagok letoltese idotullepes miatt nem fejezodott be, ezert teljes, tobbgepes futtatasi tesztet nem tudtam lefuttatni. Az elso inditaskor a start.bat probalja telepiteni a fuggosegeket.

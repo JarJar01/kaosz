@@ -29,6 +29,9 @@ let keys = Object.create(null);
 let lastHitAt = Object.create(null);
 let lastDeathCount = 0;
 let lastShieldCount = 0;
+let lastFallAt = 0;
+let physicsAccumulator = 0;
+let remoteVisuals = new Map();
 let motion = { x: 45, y: 0, vy: 0, face: 1, moving: false, jumping: false, lastSpringAt: 0, pauseUntil: 0 };
 let mouseWorld = null;
 let jumpQueued = false;
@@ -78,10 +81,16 @@ socket.on('roomState', next => {
     const phaseChanged = currentScreen !== 'game' || currentRenderedPhase !== next.phase || priorCode !== next.code;
     if (phaseChanged) {
       currentRenderedPhase = next.phase;
+      physicsAccumulator = 0;
+      remoteVisuals = new Map((next.players || []).map(p => [p.id, {
+        x: Number(p.x) || 0, y: Number(p.y) || 0,
+        deaths: Number(p.deaths) || 0, finished: !!p.finished
+      }]));
       if (next.phase === 'race') {
         const me = next.players.find(p => p.id === socket.id);
         motion = { x: me?.x ?? me?.startX ?? 45, y: me?.y ?? 0, vy: 0, face: 1, moving: false, jumping: false, grounded: true, lastSpringAt: 0, pauseUntil: 0 };
         lastDeathCount = me?.deaths ?? 0; lastShieldCount = me?.shields ?? 0;
+        lastFallAt = 0; lastSendAt = 0;
         jumpQueued = false;
       }
       if (next.phase !== 'build' || next.currentBuilderId !== socket.id) selectedBuildType = null;
@@ -103,25 +112,25 @@ socket.on('playersMoved', positions => {
   livePlayers = roomState.players.map(p => ({ ...p }));
   const me = byId.get(socket.id);
   if (me && currentScreen === 'game' && roomState.phase === 'race') {
-    // Only snap for an authoritative teleport (trap/respawn), not for ordinary
-    // network delay. The fixed camera means small corrections stay invisible.
+    // Keep the local avatar locally simulated. Replacing its coordinates with
+    // every network snapshot causes visible shaking while jumping (packets arrive
+    // later than the local physics frame). Only snap on explicit server teleports.
     const deathCount = Number(me.deaths) || 0;
     const shieldCount = Number(me.shields) || 0;
     const respawned = deathCount > lastDeathCount;
     const shieldKnockback = shieldCount < lastShieldCount;
-    // A respawn or a shield hit may move the player a short distance; snap those
-    // authoritative teleports instead of leaving the local avatar behind.
-    if (respawned || shieldKnockback || Math.abs(me.x - motion.x) > 58) {
-      motion.x = me.x; motion.y = me.y || 0; motion.vy = 0;
-      motion.pauseUntil = respawned ? performance.now() + 180 : 0;
+    if (respawned || shieldKnockback) {
+      motion.x = Number(me.x) || (getMe()?.startX ?? 36);
+      motion.y = Number(me.y) || 0;
+      motion.vy = 0;
+      motion.moving = false;
       motion.grounded = isStandingOnPlatform(motion.x, GROUND_Y + motion.y);
-    }
-    if (respawned || shieldKnockback || Math.abs((me.y || 0) - motion.y) > 70) {
-      motion.y = me.y || 0; motion.vy = 0;
-      motion.grounded = isStandingOnPlatform(motion.x, GROUND_Y + motion.y);
+      motion.jumping = !motion.grounded;
+      motion.pauseUntil = performance.now() + (respawned ? 140 : 80);
+      jumpQueued = false;
     }
     lastDeathCount = deathCount; lastShieldCount = shieldCount;
-    if (me.finished) { motion.x = me.x; motion.y = me.y || 0; motion.vy = 0; motion.moving = false; motion.grounded = true; }
+    if (me.finished) { motion.x = me.x; motion.y = me.y || 0; motion.vy = 0; motion.moving = false; motion.grounded = true; motion.jumping = false; }
   }
   updateScoreList();
 });
@@ -234,13 +243,13 @@ function renderGame() {
     if (roomState.currentBuilderId !== socket.id) return toast('Most nem te építkezel.');
     if (selectedBuildType === 'shield') return toast('A pajzsot a jobb oldali ikonra kattintva tudod megvenni.');
     const rect = canvas.getBoundingClientRect();
-    const x = ((e.clientX - rect.left) / rect.width) * CANVAS_W;
-    const y = ((e.clientY - rect.top) / rect.height) * CANVAS_H;
-    const platform = findPlatformAtX(x, 28);
-    if (!platform) return toast('Ide nem lehet építeni: vidd a kurzort egy füves platform fölé.');
-    if (y < platform.top - 22 || y > platform.top + 28) return toast('Csak a füves platformra lehet építeni, nem a levegőbe!');
+    const rawX = ((e.clientX - rect.left) / rect.width) * CANVAS_W;
+    const rawY = ((e.clientY - rect.top) / rect.height) * CANVAS_H;
+    const x = Math.max(28, Math.min(CANVAS_W - 28, rawX));
+    // The cursor marks the center of the build; groundY is the sprite's lower anchor.
+    const groundY = Math.max(55, Math.min(CANVAS_H - 20, rawY + 20));
     const type = selectedBuildType;
-    socket.emit('placeBuild', { type, x }, result => {
+    socket.emit('placeBuild', { type, x, groundY }, result => {
       if (!result?.ok) toast(result?.error || 'Nem sikerült építeni.');
       else { selectedBuildType = null; mouseWorld = null; toast('Elhelyezve! A következő játékos jön.'); }
     });
@@ -295,12 +304,12 @@ function updateBuildControls() {
   const builder = roomState.players.find(p => p.id === roomState.currentBuilderId);
   if (!isMe) selectedBuildType = null;
   const cards = ITEMS.map(item => `<button type="button" class="shop-item ${selectedBuildType===item.type?'selected':''}" data-item="${item.type}" ${!isMe || (me?.gold ?? 0) < item.price ? 'disabled' : ''}><span class="shop-icon">${item.icon}</span><strong>${item.name}</strong><small>🪙 ${item.price}</small></button>`).join('');
-  panel.innerHTML = `<div class="build-top"><div><h3>🔨 Építkezési fázis</h3><p>${isMe ? 'Válassz ikont, majd kattints a füves platformra.' : `Most ${escapeHtml(builder?.name || 'egy játékos')} építkezik.`}</p></div><span class="build-turn-pill">${isMe?'TE JÖSSZ':'VÁRJ A SORODRA'}</span></div><div class="shop-grid">${cards}</div><div class="build-footer"><span class="build-help">A kiválasztott csapda átlátszó előnézetként látszik a pályán. Levegőbe és víz fölé nem lehet építeni.</span>${isMe?'<button class="ghost-button" id="skipBuildBtn">Kihagyom →</button>':''}</div>`;
+  panel.innerHTML = `<div class="build-top"><div><h3>🔨 Építkezési fázis</h3><p>${isMe ? 'Válassz ikont, majd kattints bárhová a pályán.' : `Most ${escapeHtml(builder?.name || 'egy játékos')} építkezik.`}</p></div><span class="build-turn-pill">${isMe?'TE JÖSSZ':'VÁRJ A SORODRA'}</span></div><div class="shop-grid">${cards}</div><div class="build-footer"><span class="build-help">A szellem-előnézet követi az egeret. Platformra, levegőbe és víz fölé is építhetsz.</span>${isMe?'<button class="ghost-button" id="skipBuildBtn">Kihagyom →</button>':''}</div>`;
   panel.querySelectorAll('[data-item]').forEach(btn => btn.addEventListener('click', () => {
     const type = btn.dataset.item;
     if (type === 'shield') {
       socket.emit('placeBuild', { type: 'shield' }, result => { if (!result?.ok) toast(result?.error || 'Nem sikerült megvenni.'); else toast('Pajzs megvéve!'); });
-    } else { selectedBuildType = type; updateBuildControls(); toast('Az akadály előnézete a pályán látszik. Kattints egy füves platformra.'); }
+    } else { selectedBuildType = type; updateBuildControls(); toast('Az akadály előnézete követi az egeret. Kattints oda, ahová építeni szeretnél.'); }
   }));
   if ($('skipBuildBtn')) $('skipBuildBtn').addEventListener('click', () => emitAck('skipBuild', {}, 'Kihagytad az építkezést.'));
 }
@@ -321,9 +330,19 @@ function isStandingOnPlatform(x, feetY) {
   return PLATFORMS.some(p => x >= p.x + 9 && x <= p.x + p.width - 9 && Math.abs(feetY - p.top) <= 4);
 }
 function gameLoop(now) {
-  if (currentScreen !== 'game' || !roomState || !['race','build'].includes(roomState.phase)) { rafId = null; return; }
-  const dt = Math.min(0.035, Math.max(0.001, (now - lastTick) / 1000)); lastTick = now;
-  physicsStep(dt, now);
+  if (currentScreen !== 'game' || !roomState || !['race','build'].includes(roomState.phase)) { rafId = null; physicsAccumulator = 0; return; }
+  // Fixed 120 Hz physics avoids variable gravity/landing results that feel like a
+  // visual shake on W-jumps, especially when a browser frame is delayed.
+  const frameDt = Math.min(0.05, Math.max(0, (now - lastTick) / 1000));
+  lastTick = now;
+  physicsAccumulator += frameDt;
+  const fixedStep = 1 / 120;
+  let steps = 0;
+  while (physicsAccumulator >= fixedStep && steps < 8) {
+    physicsStep(fixedStep, now);
+    physicsAccumulator -= fixedStep;
+    steps++;
+  }
   drawWorld(now);
   updateGameChrome();
   rafId = requestAnimationFrame(gameLoop);
@@ -367,10 +386,18 @@ function physicsStep(dt, now) {
     motion.vy = 0;
   }
 
-  // Falling into water sends the animal back to the start instead of making it vanish below the canvas.
-  if (GROUND_Y + motion.y > CANVAS_H - 15) {
-    motion.x = getMe()?.startX ?? 36; motion.y = 0; motion.vy = 0; motion.grounded = true; motion.moving = false;
+  // Respawn before the sprite disappears under the canvas. The server gets an
+  // explicit reset event so remote players see the same position and no stale
+  // falling packet can pull the character back down.
+  if (GROUND_Y + motion.y > CANVAS_H - 48 && now - lastFallAt > 900) {
+    lastFallAt = now;
+    motion.x = getMe()?.startX ?? 36;
+    motion.y = 0; motion.vy = 0; motion.grounded = true; motion.moving = false; motion.jumping = false;
+    motion.pauseUntil = now + 140;
+    jumpQueued = false;
+    socket.emit('fellOffCourse');
     pushLocalMessage('💦 Leestél a pályáról — visszakerültél a rajthoz!');
+    return;
   }
   motion.jumping = !motion.grounded;
 
@@ -412,35 +439,48 @@ function drawWorld(now) {
   const latest = new Map((livePlayers.length ? livePlayers : roomState.players).map(p => [p.id, p]));
   const players = (roomState.players || []).map(p => ({ ...p, ...(latest.get(p.id) || {}) }));
   for (const p of players) {
-    // Stable staggered nameplates keep every player legible near the starting line.
+    // Stagger nameplates at the start, and interpolate remote players between
+    // network snapshots so their jumps/runs look smooth instead of stuttering.
     const labelOffset = (((Number(p.joinOrder) || 1) - 1) % 4) * 11;
-    const drawP = p.id === socket.id ? { ...p, x: motion.x, y: motion.y, moving: motion.moving, jumping: motion.jumping, face: motion.face, labelOffset } : { ...p, labelOffset };
+    let drawP;
+    if (p.id === socket.id) {
+      drawP = { ...p, x: motion.x, y: motion.y, moving: motion.moving, jumping: motion.jumping, face: motion.face, labelOffset };
+    } else {
+      let v = remoteVisuals.get(p.id);
+      const teleport = !v || v.deaths !== (Number(p.deaths) || 0) || v.finished !== !!p.finished || Math.abs((Number(p.x) || 0) - v.x) > 170 || Math.abs((Number(p.y) || 0) - v.y) > 190;
+      if (teleport) {
+        v = { x: Number(p.x) || 0, y: Number(p.y) || 0, deaths: Number(p.deaths) || 0, finished: !!p.finished };
+        remoteVisuals.set(p.id, v);
+      } else {
+        const smoothing = 0.34;
+        v.x += ((Number(p.x) || 0) - v.x) * smoothing;
+        v.y += ((Number(p.y) || 0) - v.y) * smoothing;
+      }
+      drawP = { ...p, x: v.x, y: v.y, labelOffset };
+    }
     drawAnimal(ctx, drawP, now);
   }
   if (isBuild && selectedBuildType && mouseWorld && selectedBuildType !== 'shield') {
-    const px = Math.max(25, Math.min(length - 25, mouseWorld.x));
-    const platform = findPlatformAtX(px, 28);
-    const pointerNearPlatform = platform && mouseWorld.y >= platform.top - 22 && mouseWorld.y <= platform.top + 28;
+    const px = Math.max(28, Math.min(length - 28, mouseWorld.x));
+    const ground = Math.max(55, Math.min(CANVAS_H - 20, mouseWorld.y + 20));
     ctx.save();
-    if (pointerNearPlatform) {
-      ctx.globalAlpha = 0.72;
-      ctx.strokeStyle = '#ffe16a'; ctx.lineWidth = 3; ctx.setLineDash([6, 5]);
-      ctx.beginPath(); ctx.moveTo(px, Math.max(40, platform.top - 70)); ctx.lineTo(px, platform.top + 5); ctx.stroke(); ctx.setLineDash([]);
-      ctx.globalAlpha = 0.5; drawObstacle(ctx, { type: selectedBuildType, x: px, groundY: platform.top }, now);
-      ctx.globalAlpha = 1; ctx.strokeStyle = '#5be89b'; ctx.lineWidth = 3; ctx.beginPath(); ctx.ellipse(px, platform.top + 3, 32, 10, 0, 0, Math.PI * 2); ctx.stroke();
-      ctx.fillStyle = '#123d30'; roundRect(ctx, px - 54, platform.top - 83, 108, 24, 8); ctx.fill();
-      ctx.fillStyle = '#ddffe9'; ctx.font = 'bold 12px Nunito'; ctx.textAlign = 'center'; ctx.fillText('IDE ÉPÜL', px, platform.top - 67);
-    } else {
-      ctx.strokeStyle = '#ff566a'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(px - 12, mouseWorld.y - 12); ctx.lineTo(px + 12, mouseWorld.y + 12); ctx.moveTo(px + 12, mouseWorld.y - 12); ctx.lineTo(px - 12, mouseWorld.y + 12); ctx.stroke();
-      ctx.fillStyle = '#711f37'; roundRect(ctx, px - 65, mouseWorld.y - 38, 130, 23, 7); ctx.fill(); ctx.fillStyle = '#fff0f2'; ctx.font = 'bold 11px Nunito'; ctx.textAlign = 'center'; ctx.fillText(platform ? 'KATTINTS A PLATFORMRA' : 'NINCS PLATFORM', px, mouseWorld.y - 23);
-    }
+    ctx.globalAlpha = 0.72;
+    ctx.strokeStyle = '#ffe16a'; ctx.lineWidth = 2; ctx.setLineDash([5, 5]);
+    ctx.beginPath(); ctx.moveTo(px, Math.max(30, ground - 60)); ctx.lineTo(px, Math.min(CANVAS_H - 8, ground + 8)); ctx.stroke(); ctx.setLineDash([]);
+    ctx.globalAlpha = 0.68;
+    drawObstacle(ctx, { type: selectedBuildType, x: px, groundY: ground }, now);
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = '#5be89b'; ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.ellipse(px, ground + 2, 28, 8, 0, 0, Math.PI * 2); ctx.stroke();
+    ctx.fillStyle = '#123d30'; roundRect(ctx, Math.max(4, Math.min(w - 112, px - 54)), Math.max(52, ground - 72), 108, 23, 8); ctx.fill();
+    ctx.fillStyle = '#ddffe9'; ctx.font = 'bold 12px Nunito'; ctx.textAlign = 'center'; ctx.fillText('IDE ÉPÜL', Math.max(58, Math.min(w - 58, px)), Math.max(67, ground - 57));
     ctx.restore();
   }
   if (!isBuild) {
     const myP = players.find(p => p.id === socket.id);
     if (myP?.finished) { ctx.fillStyle='#10233ddb'; roundRect(ctx,w/2-145,65,290,46,14); ctx.fillStyle='#ffe078'; ctx.font='bold 17px Nunito'; ctx.textAlign='center'; ctx.fillText(`🏁 CÉLBA ÉRTÉL! Helyezés: ${myP.finishRank}.`,w/2,94); }
   } else {
-    ctx.fillStyle = '#10213cdd'; roundRect(ctx, 285, 15, 530, 35, 12); ctx.fill(); ctx.fillStyle='#e9f5ff'; ctx.font='bold 13px Nunito'; ctx.textAlign='center'; ctx.fillText(selectedBuildType ? 'Válaszd ki a füves platformot — a szellem-előnézet mutatja a helyet.' : 'Építkezési fázis: válassz akadályt a jobb oldali panelen.', w/2, 37);
+    ctx.fillStyle = '#10213cdd'; roundRect(ctx, 285, 15, 530, 35, 12); ctx.fill(); ctx.fillStyle='#e9f5ff'; ctx.font='bold 13px Nunito'; ctx.textAlign='center'; ctx.fillText(selectedBuildType ? 'Mozgasd az egeret, majd kattints bárhová az építéshez.' : 'Építkezési fázis: válassz akadályt a jobb oldali panelen.', w/2, 37);
   }
 }
 function roundRect(ctx,x,y,w,h,r) { ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }

@@ -298,6 +298,17 @@ io.on('connection', socket => {
     else emitPositions(room);
   });
 
+  socket.on('fellOffCourse', () => {
+    const room = getRoom(socket); if (!room || room.phase !== 'race') return;
+    const p = getPlayer(room, socket.id); if (!p || p.finished) return;
+    // A client requests a fall reset only after crossing the water/death boundary.
+    p.deaths += 1;
+    p.x = p.startX ?? 36; p.y = 0; p.face = 1; p.moving = false; p.jumping = false;
+    p.hitCooldownUntil = Date.now() + 650;
+    pushChat(room, 'RENDSZER', `💦 ${p.name} leesett a pályáról, és visszakerült a rajthoz.`, true);
+    emitPositions(room); emitRoom(room);
+  });
+
   socket.on('hitHazard', (payload = {}) => {
     const room = getRoom(socket); if (!room || room.phase !== 'race') return;
     const p = getPlayer(room, socket.id); if (!p || p.finished || Date.now() < p.hitCooldownUntil) return;
@@ -316,7 +327,7 @@ io.on('connection', socket => {
       p.shields -= 1;
       const safePlatform = platformAtX(obstacle.x, 20);
       p.x = safePlatform ? clamp(obstacle.x - 82, safePlatform.x + 24, safePlatform.x + safePlatform.width - 24) : Math.max(45, p.x - 90);
-      p.y = obstacleGround - GROUND_Y;
+      p.y = obstacleGround - GROUND_Y; p.moving = false; p.jumping = false;
       pushChat(room, 'RENDSZER', `🛡️ ${p.name} pajzsa megvédte a csapdától!`, true);
     } else {
       p.deaths += 1; p.x = p.startX ?? 36; p.y = 0; p.moving = false; p.jumping = false;
@@ -336,15 +347,11 @@ io.on('connection', socket => {
       p.gold -= item.cost; p.shields += 1;
       pushChat(room, 'RENDSZER', `🛡️ ${p.name} vásárolt egy pajzsot.`, true);
     } else {
-      const x = clamp(Math.round(Number(payload.x) || 0), 30, MAP_LENGTH - 30);
-      const platform = platformAtX(x, 28);
-      if (!platform) return ack({ ok: false, error: 'Ide nem lehet építeni. Válassz egy füves platformot, ne levegőt vagy vizet.' });
-      const minSpacing = type === 'crate' ? 58 : 70;
-      if (room.obstacles.some(o => Math.abs(o.x - x) < minSpacing && Math.abs((Number.isFinite(o.groundY) ? o.groundY : GROUND_Y) - platform.top) < 18)) {
-        return ack({ ok: false, error: 'Túl közel van egy másik akadályhoz. Válassz egy másik helyet a platformon.' });
-      }
+      // Placeable at any visible world coordinate: ground, platform, water area or air.
+      const x = clamp(Math.round(Number(payload.x) || 0), 28, MAP_LENGTH - 28);
+      const groundY = clamp(Math.round(Number(payload.groundY) || GROUND_Y), 55, 600);
       p.gold -= item.cost;
-      room.obstacles.push({ id: `${room.roundNo}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, type, x, groundY: platform.top, ownerId: p.id, ownerName: p.name, createdRound: room.roundNo });
+      room.obstacles.push({ id: `${room.roundNo}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, type, x, groundY, ownerId: p.id, ownerName: p.name, createdRound: room.roundNo });
       pushChat(room, 'RENDSZER', `🔨 ${p.name} épített egyet: ${item.name}.`, true);
     }
     ack({ ok: true });
