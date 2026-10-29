@@ -1,34 +1,22 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="160" height="80" viewBox="0 0 160 80">
-<defs><linearGradient id="capyFur" x1="0" y1="0" x2=".2" y2="1"><stop stop-color="#dcae73"/><stop offset=".6" stop-color="#b9814d"/><stop offset="1" stop-color="#805131"/></linearGradient><linearGradient id="capyMuzzle" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#f1d3a4"/><stop offset="1" stop-color="#c69a65"/></linearGradient></defs>
-<g stroke="#795033" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round">
- <g>
-  <path d="M12 52 Q7 50 10 46 Q14 43 17 48" fill="none" stroke="#a96d42" stroke-width="3"/>
-  <path d="M20 47 L17 60 Q16 65 20 68 L25 68 L27 63 L28 51Z" fill="#94603b"/><path d="M46 47 L49 60 Q51 65 47 68 L42 68 L40 63 L40 51Z" fill="#98613b"/>
-  <path d="M19 65 L19 69 Q22 72 26 68 L25 64Z M42 65 L43 69 Q47 72 50 68 L48 64Z" fill="#5f3c2a"/>
-  <path d="M17 46 C16 35 25 30 38 31 C48 31 54 36 55 46 L51 58 L23 58Z" fill="url(#capyFur)"/>
-  <path d="M23 54 L22 65 Q23 69 28 69 Q32 68 31 64 L32 55Z" fill="#9a653e"/><path d="M41 54 L42 65 Q42 69 47 68 Q51 67 49 63 L49 54Z" fill="#9a653e"/>
-  <path d="M25 64 L24 68 Q27 71 31 68 L31 64Z M42 64 L43 68 Q47 71 50 67 L49 64Z" fill="#5f3c2a"/>
-  <path d="M24 42 C24 35 30 30 39 31 C47 32 52 38 50 46 C48 53 40 56 32 53 C27 51 24 47 24 42Z" fill="url(#capyFur)"/>
-  <path d="M28 34 Q24 27 30 27 Q35 28 35 34Z" fill="#a77148"/><path d="M30 31 L32 33" stroke="#edc58e" stroke-width="1.8"/>
-  <path d="M43 34 Q43 28 48 29 Q51 31 49 36Z" fill="#9c683f"/>
-  <ellipse cx="51" cy="42" rx="9" ry="6" fill="url(#capyMuzzle)"/><ellipse cx="58" cy="40" rx="2.2" ry="1.7" fill="#382b24" stroke="none"/>
-  <ellipse cx="45" cy="35" rx="2.4" ry="3" fill="#fff" stroke="none"/><ellipse cx="46" cy="35.4" rx="1.2" ry="1.8" fill="#202631" stroke="none"/><circle cx="46.3" cy="34.8" r=".55" fill="#fff" stroke="none"/>
-  <path d="M51 47 Q55 49 58 46" fill="none" stroke="#765033" stroke-width="1.2"/><path d="M49 43 L45 43 M49 45 L45 46" stroke="#e6c393" stroke-width="1"/>
-  <path d="M21 43 Q27 39 32 41" fill="none" stroke="#e8bd86" stroke-width="2.4"/>
- </g>
- <g transform="translate(80 0)">
-  <path d="M12 52 Q7 50 10 46 Q14 43 17 48" fill="none" stroke="#a96d42" stroke-width="3"/>
-  <path d="M20 47 L17 60 Q16 65 20 68 L25 68 L27 63 L28 51Z" fill="#94603b"/><path d="M46 47 L49 60 Q51 65 47 68 L42 68 L40 63 L40 51Z" fill="#98613b"/>
-  <path d="M19 65 L19 69 Q22 72 26 68 L25 64Z M42 65 L43 69 Q47 72 50 68 L48 64Z" fill="#5f3c2a"/>
-  <path d="M17 46 C16 35 25 30 38 31 C48 31 54 36 55 46 L51 58 L23 58Z" fill="url(#capyFur)"/>
-  <path d="M23 54 L18 62 Q16 67 21 69 Q25 70 28 65 L33 55Z" fill="#9a653e"/><path d="M42 54 L49 61 Q52 65 48 69 Q44 70 42 66 L37 55Z" fill="#9a653e"/>
-  <path d="M19 64 L19 68 Q22 71 27 68 L28 64Z M43 64 L44 68 Q48 71 51 67 L48 64Z" fill="#5f3c2a"/>
-  <path d="M24 42 C24 35 30 30 39 31 C47 32 52 38 50 46 C48 53 40 56 32 53 C27 51 24 47 24 42Z" fill="url(#capyFur)"/>
-  <path d="M28 34 Q24 27 30 27 Q35 28 35 34Z" fill="#a77148"/><path d="M30 31 L32 33" stroke="#edc58e" stroke-width="1.8"/>
-  <path d="M43 34 Q43 28 48 29 Q51 31 49 36Z" fill="#9c683f"/>
-  <ellipse cx="51" cy="42" rx="9" ry="6" fill="url(#capyMuzzle)"/><ellipse cx="58" cy="40" rx="2.2" ry="1.7" fill="#382b24" stroke="none"/>
-  <ellipse cx="45" cy="35" rx="2.4" ry="3" fill="#fff" stroke="none"/><ellipse cx="46" cy="35.4" rx="1.2" ry="1.8" fill="#202631" stroke="none"/><circle cx="46.3" cy="34.8" r=".55" fill="#fff" stroke="none"/>
-  <path d="M51 47 Q55 49 58 46" fill="none" stroke="#765033" stroke-width="1.2"/><path d="M49 43 L45 43 M49 45 L45 46" stroke="#e6c393" stroke-width="1"/>
-  <path d="M21 43 Q27 39 32 41" fill="none" stroke="#e8bd86" stroke-width="2.4"/>
- </g>
-</g></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 100" width="120" height="100">
+  <!-- Capybara / Bence -->
+  <ellipse cx="60" cy="55" rx="35" ry="23" fill="#b0733e" stroke="#663c18" stroke-width="3"/>
+  <!-- Body contour -->
+  <path d="M 40 40 Q 55 35 70 40" stroke="#d49b6a" stroke-width="3" fill="none" stroke-linecap="round" opacity="0.8"/>
+  <!-- Tail -->
+  <path d="M 26 56 Q 20 50 24 45" stroke="#663c18" stroke-width="3" fill="none" stroke-linecap="round"/>
+  <!-- Ears -->
+  <circle cx="52" cy="34" r="5" fill="#b0733e" stroke="#663c18" stroke-width="2.5"/>
+  <!-- Snout / Head front -->
+  <ellipse cx="90" cy="56" rx="14" ry="12" fill="#d9ad82" stroke="#663c18" stroke-width="2.5"/>
+  <!-- Eye -->
+  <circle cx="78" cy="45" r="5.5" fill="#fff" stroke="#663c18" stroke-width="2"/>
+  <circle cx="80" cy="45" r="2.5" fill="#222"/>
+  <!-- Nose dot -->
+  <circle cx="101" cy="56" r="2" fill="#663c18"/>
+  <!-- Legs -->
+  <rect x="44" y="70" width="8" height="20" rx="3" fill="#9c6334" stroke="#663c18" stroke-width="2.5"/>
+  <rect x="68" y="70" width="8" height="20" rx="3" fill="#9c6334" stroke="#663c18" stroke-width="2.5"/>
+  <path d="M 44 86 c 0 4 8 4 8 0 Z" fill="#523013"/>
+  <path d="M 68 86 c 0 4 8 4 8 0 Z" fill="#523013"/>
+</svg>

@@ -1,42 +1,22 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="160" height="80" viewBox="0 0 160 80">
-<defs>
- <linearGradient id="pigSkin" x1="0" y1="0" x2="0.2" y2="1"><stop stop-color="#ffdce4"/><stop offset=".58" stop-color="#f4a5b7"/><stop offset="1" stop-color="#d66f8d"/></linearGradient>
- <linearGradient id="snout" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#ffedf1"/><stop offset="1" stop-color="#e7859d"/></linearGradient>
- <linearGradient id="hoof" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#ba687e"/><stop offset="1" stop-color="#78394d"/></linearGradient>
-</defs>
-<g stroke="#9d5368" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round">
- <!-- Frame one -->
- <g id="runA">
-  <path d="M13 43 C7 40 7 34 13 32 C17 31 19 35 16 37 C14 38 12 36 14 35" fill="none" stroke="#e57f9b" stroke-width="3.2"/>
-  <path d="M22 47 L20 60 Q18 65 22 68 L27 68 L29 63 L29 51Z" fill="#de829a"/><path d="M46 47 L48 60 Q50 65 46 68 L42 68 L40 63 L40 51Z" fill="#dc7f97"/>
-  <path d="M21 65 L21 69 Q24 72 28 68 L27 64Z M42 65 L42 69 Q46 72 49 68 L47 64Z" fill="url(#hoof)" stroke="#803b50"/>
-  <path d="M22 44 C22 36 27 31 36 31 C45 31 50 36 52 44 L47 56 L26 56 Z" fill="url(#pigSkin)"/>
-  <path d="M28 54 L26 66 Q26 70 31 70 Q35 70 35 66 L36 55Z" fill="url(#pigSkin)"/><path d="M39 54 L40 65 Q40 70 45 69 Q49 68 47 64 L46 53Z" fill="url(#pigSkin)"/>
-  <path d="M26 65 L26 69 Q30 72 34 68 L34 65Z M40 65 L41 69 Q45 72 48 67 L47 64Z" fill="url(#hoof)" stroke="#803b50"/>
-  <path d="M24 41 C24 34 32 29 41 31 C48 32 52 38 50 46 C48 53 39 57 31 53 C26 51 23 47 24 41Z" fill="url(#pigSkin)"/>
-  <path d="M43 33 C43 25 49 21 54 26 L53 35Z" fill="#ed8fa6"/><path d="M46 30 L50 26 L50 33Z" fill="#cf6682"/>
-  <path d="M32 33 L28 25 Q27 21 33 23 L39 32Z" fill="#f5a9ba"/><path d="M30 27 L34 29 L35 31Z" fill="#cb637e"/>
-  <ellipse cx="53" cy="41" rx="8" ry="6" fill="url(#snout)"/><ellipse cx="50.5" cy="40.5" rx="1.2" ry="1.7" fill="#87394e" stroke="none"/><ellipse cx="56" cy="40.5" rx="1.2" ry="1.7" fill="#87394e" stroke="none"/>
-  <ellipse cx="45" cy="35" rx="2.5" ry="3.1" fill="#fff" stroke="none"/><ellipse cx="46" cy="35.6" rx="1.2" ry="1.7" fill="#282a37" stroke="none"/><circle cx="46.4" cy="35" r=".5" fill="#fff" stroke="none"/>
-  <path d="M51 47 Q54 49 57 46" fill="none" stroke="#9d5368" stroke-width="1.2"/>
-  <path d="M28 42 Q24 39 25 43" fill="none" stroke="#ffdce4" stroke-width="2"/>
-  <path d="M26 51 Q32 55 39 54" fill="none" stroke="#d77891" stroke-width="1.4"/>
- </g>
- <!-- Frame two with a different leg stride -->
- <g id="runB" transform="translate(80 0)">
-  <path d="M13 43 C7 40 7 34 13 32 C17 31 19 35 16 37 C14 38 12 36 14 35" fill="none" stroke="#e57f9b" stroke-width="3.2"/>
-  <path d="M22 47 L20 60 Q18 65 22 68 L27 68 L29 63 L29 51Z" fill="#de829a"/><path d="M46 47 L48 60 Q50 65 46 68 L42 68 L40 63 L40 51Z" fill="#dc7f97"/>
-  <path d="M21 65 L21 69 Q24 72 28 68 L27 64Z M42 65 L42 69 Q46 72 49 68 L47 64Z" fill="url(#hoof)" stroke="#803b50"/>
-  <path d="M22 44 C22 36 27 31 36 31 C45 31 50 36 52 44 L47 56 L26 56 Z" fill="url(#pigSkin)"/>
-  <path d="M27 54 L22 62 Q20 67 25 69 Q29 70 31 65 L37 55Z" fill="url(#pigSkin)"/><path d="M41 54 L47 61 Q51 65 47 69 Q43 71 41 66 L37 55Z" fill="url(#pigSkin)"/>
-  <path d="M22 64 L21 68 Q24 72 29 68 L31 64Z M42 64 L43 69 Q47 72 50 67 L47 63Z" fill="url(#hoof)" stroke="#803b50"/>
-  <path d="M24 41 C24 34 32 29 41 31 C48 32 52 38 50 46 C48 53 39 57 31 53 C26 51 23 47 24 41Z" fill="url(#pigSkin)"/>
-  <path d="M43 33 C43 25 49 21 54 26 L53 35Z" fill="#ed8fa6"/><path d="M46 30 L50 26 L50 33Z" fill="#cf6682"/>
-  <path d="M32 33 L28 25 Q27 21 33 23 L39 32Z" fill="#f5a9ba"/><path d="M30 27 L34 29 L35 31Z" fill="#cb637e"/>
-  <ellipse cx="53" cy="41" rx="8" ry="6" fill="url(#snout)"/><ellipse cx="50.5" cy="40.5" rx="1.2" ry="1.7" fill="#87394e" stroke="none"/><ellipse cx="56" cy="40.5" rx="1.2" ry="1.7" fill="#87394e" stroke="none"/>
-  <ellipse cx="45" cy="35" rx="2.5" ry="3.1" fill="#fff" stroke="none"/><ellipse cx="46" cy="35.6" rx="1.2" ry="1.7" fill="#282a37" stroke="none"/><circle cx="46.4" cy="35" r=".5" fill="#fff" stroke="none"/>
-  <path d="M51 47 Q54 49 57 46" fill="none" stroke="#9d5368" stroke-width="1.2"/>
-  <path d="M26 42 Q30 39 31 42" fill="none" stroke="#ffdce4" stroke-width="2"/>
-  <path d="M26 51 Q32 55 39 54" fill="none" stroke="#d77891" stroke-width="1.4"/>
- </g>
-</g></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 100" width="120" height="100">
+  <!-- Pig / Szabi -->
+  <ellipse cx="60" cy="55" rx="32" ry="24" fill="#f49ac2" stroke="#a8436e" stroke-width="3"/>
+  <!-- Highlights -->
+  <path d="M 40 42 Q 50 38 60 42" stroke="#fff" stroke-width="3" fill="none" stroke-linecap="round" opacity="0.7"/>
+  <!-- Tail -->
+  <path d="M 28 55 Q 20 48 24 40 Q 28 35 22 42" stroke="#a8436e" stroke-width="3" fill="none" stroke-linecap="round"/>
+  <!-- Ears -->
+  <polygon points="52,32 62,15 68,30" fill="#f49ac2" stroke="#a8436e" stroke-width="2.5"/>
+  <!-- Snout -->
+  <ellipse cx="88" cy="58" rx="14" ry="11" fill="#f8b4d0" stroke="#a8436e" stroke-width="2.5"/>
+  <ellipse cx="84" cy="57" rx="2" ry="3.5" fill="#a8436e"/>
+  <ellipse cx="92" cy="57" rx="2" ry="3.5" fill="#a8436e"/>
+  <!-- Eye -->
+  <circle cx="78" cy="46" r="6" fill="#fff" stroke="#a8436e" stroke-width="2"/>
+  <circle cx="80" cy="46" r="2.5" fill="#222"/>
+  <!-- Legs -->
+  <rect x="42" y="72" width="9" height="18" rx="4" fill="#e07ba6" stroke="#a8436e" stroke-width="2.5"/>
+  <rect x="65" y="72" width="9" height="18" rx="4" fill="#e07ba6" stroke="#a8436e" stroke-width="2.5"/>
+  <path d="M 42 84 c 0 6 9 6 9 0 Z" fill="#7a2d4b"/>
+  <path d="M 65 84 c 0 6 9 6 9 0 Z" fill="#7a2d4b"/>
+</svg>

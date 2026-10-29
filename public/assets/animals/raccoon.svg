@@ -1,26 +1,28 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="160" height="80" viewBox="0 0 160 80">
-<defs><linearGradient id="racFur" x1="0" y1="0" x2="0.2" y2="1"><stop stop-color="#d7dce3"/><stop offset=".55" stop-color="#9ca7b5"/><stop offset="1" stop-color="#687586"/></linearGradient><linearGradient id="racMask" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#566171"/><stop offset="1" stop-color="#202a39"/></linearGradient></defs>
-<g stroke="#576171" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round">
- <g>
-  <path d="M23 48 C17 39 10 34 9 40 C5 48 13 56 22 56 L32 52Z" fill="#7d8998"/><path d="M10 40 Q16 41 20 46" fill="none" stroke="#303b4c" stroke-width="4"/><path d="M12 47 Q18 47 22 51" fill="none" stroke="#dfe4ea" stroke-width="4"/><path d="M17 53 Q21 53 25 55" fill="none" stroke="#303b4c" stroke-width="4"/>
-  <path d="M20 45 C19 36 27 32 38 34 C47 34 51 40 51 48 L47 58 L25 58Z" fill="url(#racFur)"/>
-  <path d="M24 53 L22 64 Q22 69 27 70 Q31 69 31 64 L33 55Z" fill="#8e9aa8"/><path d="M40 54 L42 65 Q43 70 48 68 Q51 67 48 62 L47 53Z" fill="#8995a4"/>
-  <path d="M22 64 L22 69 Q26 72 31 68 L31 64Z M43 64 L44 69 Q48 72 51 67 L48 63Z" fill="#3f4959"/>
-  <path d="M25 40 C24 33 30 28 39 29 C48 30 53 36 51 44 C50 52 42 55 34 52 C28 50 24 46 25 40Z" fill="url(#racFur)"/>
-  <path d="M28 32 L25 22 Q25 18 31 22 L36 30Z" fill="#909baa"/><path d="M44 30 L49 20 Q53 18 54 23 L53 33Z" fill="#8c97a5"/><path d="M28 25 L31 29 L29 28Z M48 25 L50 29 L51 26Z" fill="#d28a94"/>
-  <path d="M27 38 Q32 32 38 37 L39 41 L32 43Z M39 37 Q45 32 51 38 L48 43 L40 41Z" fill="url(#racMask)" stroke="#263243"/>
-  <ellipse cx="34" cy="38" rx="2" ry="2.3" fill="#fff" stroke="none"/><ellipse cx="45" cy="38" rx="2" ry="2.3" fill="#fff" stroke="none"/><circle cx="34.5" cy="38.2" r="1.1" fill="#1a2636" stroke="none"/><circle cx="45.5" cy="38.2" r="1.1" fill="#1a2636" stroke="none"/>
-  <path d="M35 43 Q41 45 47 43 L45 49 Q40 52 35 48Z" fill="#e1e4e8"/><ellipse cx="42" cy="43" rx="3" ry="2" fill="#303747" stroke="none"/><path d="M38 48 Q42 51 46 48" fill="none" stroke="#596474"/>
- </g>
- <g transform="translate(80 0)">
-  <path d="M23 48 C17 39 10 34 9 40 C5 48 13 56 22 56 L32 52Z" fill="#7d8998"/><path d="M10 40 Q16 41 20 46" fill="none" stroke="#303b4c" stroke-width="4"/><path d="M12 47 Q18 47 22 51" fill="none" stroke="#dfe4ea" stroke-width="4"/><path d="M17 53 Q21 53 25 55" fill="none" stroke="#303b4c" stroke-width="4"/>
-  <path d="M20 45 C19 36 27 32 38 34 C47 34 51 40 51 48 L47 58 L25 58Z" fill="url(#racFur)"/>
-  <path d="M24 53 L19 61 Q17 66 22 69 Q26 70 29 65 L34 55Z" fill="#8e9aa8"/><path d="M41 54 L48 61 Q51 66 47 69 Q43 70 41 65 L37 55Z" fill="#8995a4"/>
-  <path d="M20 64 L19 69 Q23 72 28 68 L29 64Z M42 64 L44 69 Q48 72 51 67 L48 63Z" fill="#3f4959"/>
-  <path d="M25 40 C24 33 30 28 39 29 C48 30 53 36 51 44 C50 52 42 55 34 52 C28 50 24 46 25 40Z" fill="url(#racFur)"/>
-  <path d="M28 32 L25 22 Q25 18 31 22 L36 30Z" fill="#909baa"/><path d="M44 30 L49 20 Q53 18 54 23 L53 33Z" fill="#8c97a5"/><path d="M28 25 L31 29 L29 28Z M48 25 L50 29 L51 26Z" fill="#d28a94"/>
-  <path d="M27 38 Q32 32 38 37 L39 41 L32 43Z M39 37 Q45 32 51 38 L48 43 L40 41Z" fill="url(#racMask)" stroke="#263243"/>
-  <ellipse cx="34" cy="38" rx="2" ry="2.3" fill="#fff" stroke="none"/><ellipse cx="45" cy="38" rx="2" ry="2.3" fill="#fff" stroke="none"/><circle cx="34.5" cy="38.2" r="1.1" fill="#1a2636" stroke="none"/><circle cx="45.5" cy="38.2" r="1.1" fill="#1a2636" stroke="none"/>
-  <path d="M35 43 Q41 45 47 43 L45 49 Q40 52 35 48Z" fill="#e1e4e8"/><ellipse cx="42" cy="43" rx="3" ry="2" fill="#303747" stroke="none"/><path d="M38 48 Q42 51 46 48" fill="none" stroke="#596474"/>
- </g>
-</g></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 100" width="120" height="100">
+  <!-- Raccoon / Máté -->
+  <ellipse cx="60" cy="56" rx="30" ry="22" fill="#718096" stroke="#2d3748" stroke-width="3"/>
+  <!-- Tail -->
+  <path d="M 33 60 C 18 52 18 70 26 78 C 20 70 24 58 35 62" fill="#4a5568" stroke="#2d3748" stroke-width="2.5"/>
+  <path d="M 24 64 L 28 69" stroke="#e2e8f0" stroke-width="3"/>
+  <path d="M 21 72 L 25 76" stroke="#e2e8f0" stroke-width="3"/>
+  <!-- Ears -->
+  <polygon points="50,38 44,20 58,32" fill="#718096" stroke="#2d3748" stroke-width="2.5"/>
+  <polygon points="70,38 78,20 64,32" fill="#718096" stroke="#2d3748" stroke-width="2.5"/>
+  <polygon points="50,34 46,24 54,30" fill="#cbd5e0"/>
+  <!-- Head front -->
+  <ellipse cx="84" cy="52" rx="14" ry="12" fill="#a0aec0" stroke="#2d3748" stroke-width="2.5"/>
+  <!-- Mask -->
+  <path d="M 72 45 Q 84 40 96 45 Q 98 56 84 56 Q 70 56 72 45 Z" fill="#1a202c"/>
+  <!-- Eyes -->
+  <circle cx="78" cy="48" r="4.5" fill="#fff"/>
+  <circle cx="79" cy="48" r="2" fill="#000"/>
+  <circle cx="90" cy="48" r="4.5" fill="#fff"/>
+  <circle cx="89" cy="48" r="2" fill="#000"/>
+  <!-- Snout -->
+  <circle cx="95" cy="54" r="3.5" fill="#1a202c"/>
+  <!-- Legs -->
+  <rect x="42" y="72" width="8" height="18" rx="3" fill="#4a5568" stroke="#2d3748" stroke-width="2.5"/>
+  <rect x="66" y="72" width="8" height="18" rx="3" fill="#4a5568" stroke="#2d3748" stroke-width="2.5"/>
+  <path d="M 42 84 h 8 v 6 h -8 z" fill="#1a202c"/>
+  <path d="M 66 84 h 8 v 6 h -8 z" fill="#1a202c"/>
+</svg>
