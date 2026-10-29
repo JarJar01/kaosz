@@ -9,6 +9,7 @@ const io = new Server(server, { cors: { origin: '*' } });
 const PORT = Number(process.env.PORT || 3000);
 const MAP_LENGTH = 1100;
 const GROUND_Y = 430;
+const GOAL_SAFE_LEFT = 910;
 const PLATFORMS = [
   { x: 0, width: 290, top: 430 },
   { x: 324, width: 128, top: 475 },
@@ -294,7 +295,10 @@ io.on('connection', socket => {
       p.gold += (milestone - p.maxMilestonePaid) * 4;
       p.maxMilestonePaid = milestone;
     }
-    if (p.x >= room.settings.mapLength - 95) finishPlayer(room, p);
+    const goalTop = PLATFORMS[PLATFORMS.length - 1].top;
+    // The flag only counts when the player has actually landed on its platform,
+    // not merely when they pass the x coordinate while falling or jumping below it.
+    if (p.x >= room.settings.mapLength - 90 && Math.abs((GROUND_Y + p.y) - goalTop) <= 32) finishPlayer(room, p);
     else emitPositions(room);
   });
 
@@ -309,31 +313,51 @@ io.on('connection', socket => {
     emitPositions(room); emitRoom(room);
   });
 
-  socket.on('hitHazard', (payload = {}) => {
-    const room = getRoom(socket); if (!room || room.phase !== 'race') return;
-    const p = getPlayer(room, socket.id); if (!p || p.finished || Date.now() < p.hitCooldownUntil) return;
+  socket.on('hitHazard', (payload = {}, ack = () => {}) => {
+    const room = getRoom(socket);
+    if (!room || room.phase !== 'race') return ack({ ok: false, error: 'Most nem aktív a verseny.' });
+    const p = getPlayer(room, socket.id);
+    if (!p || p.finished) return ack({ ok: false, error: 'Ez a játékos már nem versenyez.' });
+    if (Date.now() < p.hitCooldownUntil) return ack({ ok: false, error: 'A csapda még nem aktiválható újra.' });
     const obstacle = room.obstacles.find(o => o.id === payload.id);
-    if (!obstacle || Math.abs(p.x - obstacle.x) > 105) return;
+    if (!obstacle || obstacle.type === 'crate' || Math.abs(p.x - obstacle.x) > 82) return ack({ ok: false, error: 'A csapdaérintés nem érvényes.' });
     const obstacleGround = Number.isFinite(obstacle.groundY) ? obstacle.groundY : GROUND_Y;
     const playerFeet = GROUND_Y + p.y;
-    if (Math.abs(playerFeet - obstacleGround) > 48) return;
+    const playerTop = playerFeet - 54;
+    // Position packets arrive slightly after collision due to network latency.
+    // Use each sprite's actual rectangle with a small network tolerance instead
+    // of requiring exact feet-to-object alignment.
+    const boxes = {
+      saw: { left: obstacle.x - 25, right: obstacle.x + 25, top: obstacleGround - 47, bottom: obstacleGround + 2 },
+      spikes: { left: obstacle.x - 27, right: obstacle.x + 27, top: obstacleGround - 30, bottom: obstacleGround + 4 },
+      spring: { left: obstacle.x - 26, right: obstacle.x + 26, top: obstacleGround - 40, bottom: obstacleGround + 4 },
+      barrel: { left: obstacle.x - 23, right: obstacle.x + 23, top: obstacleGround - 37, bottom: obstacleGround + 3 }
+    };
+    const b = boxes[obstacle.type];
+    if (!b || p.x + 15 < b.left - 18 || p.x - 15 > b.right + 18 || playerFeet + 3 < b.top - 70 || playerTop > b.bottom + 70) {
+      return ack({ ok: false, error: 'A karakter még nincs a csapda közelében.' });
+    }
     p.hitCooldownUntil = Date.now() + 850;
+    let action = 'death';
     if (obstacle.type === 'spring') {
-      p.y = (obstacleGround - GROUND_Y) - 145; p.x = Math.min(room.settings.mapLength - 100, p.x + 18);
+      // The local client applies the spring impulse immediately. Keeping the
+      // server Y here avoids an authoritative snap that fights the jump arc.
+      action = 'spring';
+      p.jumping = true;
       pushChat(room, 'RENDSZER', `${p.name} felrepült a rugós kilövővel!`, true);
-    } else if (obstacle.type === 'crate') {
-      return;
     } else if (p.shields > 0) {
       p.shields -= 1;
-      const safePlatform = platformAtX(obstacle.x, 20);
-      p.x = safePlatform ? clamp(obstacle.x - 82, safePlatform.x + 24, safePlatform.x + safePlatform.width - 24) : Math.max(45, p.x - 90);
-      p.y = obstacleGround - GROUND_Y; p.moving = false; p.jumping = false;
+      p.x = clamp(p.x - 62, p.startX ?? 36, room.settings.mapLength - 40);
+      p.moving = false; p.jumping = true;
+      action = 'shield';
       pushChat(room, 'RENDSZER', `🛡️ ${p.name} pajzsa megvédte a csapdától!`, true);
     } else {
       p.deaths += 1; p.x = p.startX ?? 36; p.y = 0; p.moving = false; p.jumping = false;
+      action = 'death';
       pushChat(room, 'RENDSZER', `💥 ${p.name} belefutott egy csapdába, és visszakerült a rajthoz!`, true);
     }
     emitPositions(room); emitRoom(room);
+    ack({ ok: true, action });
   });
 
   socket.on('placeBuild', (payload = {}, ack = () => {}) => {
@@ -348,8 +372,13 @@ io.on('connection', socket => {
       pushChat(room, 'RENDSZER', `🛡️ ${p.name} vásárolt egy pajzsot.`, true);
     } else {
       // Placeable at any visible world coordinate: ground, platform, water area or air.
-      const x = clamp(Math.round(Number(payload.x) || 0), 28, MAP_LENGTH - 28);
-      const groundY = clamp(Math.round(Number(payload.groundY) || GROUND_Y), 55, 600);
+      const rawX = Number(payload.x);
+      const rawGroundY = Number(payload.groundY);
+      const x = clamp(Math.round(Number.isFinite(rawX) ? rawX : 28), 28, MAP_LENGTH - 28);
+      const groundY = clamp(Math.round(Number.isFinite(rawGroundY) ? rawGroundY : GROUND_Y), 50, 600);
+      // Leave a clear corridor at the finish flag in every vertical position.
+      // This is server-enforced too, so clients cannot block the goal with an airborne object.
+      if (x + 28 >= GOAL_SAFE_LEFT) return ack({ ok: false, error: 'A zászló körül szabadon kell hagyni a célzónát!' });
       p.gold -= item.cost;
       room.obstacles.push({ id: `${room.roundNo}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, type, x, groundY, ownerId: p.id, ownerName: p.name, createdRound: room.roundNo });
       pushChat(room, 'RENDSZER', `🔨 ${p.name} épített egyet: ${item.name}.`, true);

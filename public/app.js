@@ -32,9 +32,11 @@ let lastShieldCount = 0;
 let lastFallAt = 0;
 let physicsAccumulator = 0;
 let remoteVisuals = new Map();
-let motion = { x: 45, y: 0, vy: 0, face: 1, moving: false, jumping: false, lastSpringAt: 0, pauseUntil: 0 };
+let motion = { x: 45, y: 0, vy: 0, face: 1, moving: false, jumping: false, grounded: true, coyoteUntil: 0, pauseUntil: 0 };
 let mouseWorld = null;
-let jumpQueued = false;
+let jumpQueuedUntil = 0;
+const JUMP_BUFFER_MS = 180;
+const COYOTE_TIME_MS = 140;
 let rafId = null;
 
 const screenHome = $('screenHome');
@@ -88,10 +90,10 @@ socket.on('roomState', next => {
       }]));
       if (next.phase === 'race') {
         const me = next.players.find(p => p.id === socket.id);
-        motion = { x: me?.x ?? me?.startX ?? 45, y: me?.y ?? 0, vy: 0, face: 1, moving: false, jumping: false, grounded: true, lastSpringAt: 0, pauseUntil: 0 };
+        motion = { x: me?.x ?? me?.startX ?? 45, y: me?.y ?? 0, vy: 0, face: 1, moving: false, jumping: false, grounded: true, coyoteUntil: 0, pauseUntil: 0 };
         lastDeathCount = me?.deaths ?? 0; lastShieldCount = me?.shields ?? 0;
         lastFallAt = 0; lastSendAt = 0;
-        jumpQueued = false;
+        jumpQueuedUntil = 0;
       }
       if (next.phase !== 'build' || next.currentBuilderId !== socket.id) selectedBuildType = null;
       renderGame();
@@ -120,14 +122,15 @@ socket.on('playersMoved', positions => {
     const respawned = deathCount > lastDeathCount;
     const shieldKnockback = shieldCount < lastShieldCount;
     if (respawned || shieldKnockback) {
-      motion.x = Number(me.x) || (getMe()?.startX ?? 36);
-      motion.y = Number(me.y) || 0;
-      motion.vy = 0;
+      motion.x = Number.isFinite(Number(me.x)) ? Number(me.x) : (getMe()?.startX ?? 36);
+      motion.y = Number.isFinite(Number(me.y)) ? Number(me.y) : 0;
+      motion.vy = shieldKnockback && !respawned ? -260 : 0;
       motion.moving = false;
-      motion.grounded = isStandingOnPlatform(motion.x, GROUND_Y + motion.y);
-      motion.jumping = !motion.grounded;
-      motion.pauseUntil = performance.now() + (respawned ? 140 : 80);
-      jumpQueued = false;
+      motion.grounded = respawned ? true : false;
+      motion.jumping = shieldKnockback && !respawned;
+      motion.coyoteUntil = 0;
+      motion.pauseUntil = performance.now() + (respawned ? 170 : 90);
+      jumpQueuedUntil = 0;
     }
     lastDeathCount = deathCount; lastShieldCount = shieldCount;
     if (me.finished) { motion.x = me.x; motion.y = me.y || 0; motion.vy = 0; motion.moving = false; motion.grounded = true; motion.jumping = false; }
@@ -224,20 +227,24 @@ function renderGame() {
   selectedBuildType = roomState.phase === 'build' && roomState.currentBuilderId === socket.id ? selectedBuildType : null;
   screenGame.innerHTML = `
     <div class="game-top"><div class="game-title"><h1>🐾 ÁllatKáosz</h1><p id="gameStatusText">${escapeHtml(roomState.statusMessage || '')}</p></div><div class="game-statuses"><div class="status-chip">🏁 Kör <b id="roundChip">${roomState.roundNo}/${roomState.settings.rounds}</b></div><div class="status-chip">⏱️ <b id="timerValue">--:--</b></div><div class="status-chip">🪙 Arany <b id="myGoldValue">${getMe()?.gold ?? 0}</b></div><button class="ghost-button" id="exitGameBtn">Kilépés</button></div></div>
-    <div class="game-layout"><section class="game-main-col"><div class="world-frame"><canvas id="worldCanvas" width="1100" height="620" aria-label="Az egyetlen közös akadálypálya"></canvas><div class="canvas-overlay"><div class="canvas-pill" id="canvasModeLabel">🏃 VERSENY</div><div class="canvas-pill right">🏁 <strong>Érd el a zászlót!</strong> · TAB: pontok</div></div>
+    <div class="game-layout"><section class="game-main-col"><div class="world-frame"><canvas id="worldCanvas" width="1100" height="620" tabindex="0" aria-label="Az egyetlen közös akadálypálya. Kattints a pályára, majd W ugrás"></canvas><div class="canvas-overlay"><div class="canvas-pill" id="canvasModeLabel">🏃 VERSENY</div><div class="canvas-pill right">🏁 <strong>Érd el a zászlót!</strong> · TAB: pontok</div></div>
       <section class="score-overlay hidden" id="scoreOverlay" aria-label="Pontok és arany"><div class="score-overlay-head"><strong>🏆 Pontok és arany</strong><button type="button" id="closeScoreButton" aria-label="Bezárás">×</button></div><div class="score-list" id="scoreList"></div><small>Engedd fel a TAB billentyűt az ablak bezárásához.</small></section>
     </div>
       <div class="game-instructions" id="gameInstructions"><span><b>IRÁNYÍTÁS</b> <span class="keycap">A</span><span class="keycap">D</span> / <span class="keycap">←</span><span class="keycap">→</span> futás · <span class="keycap">W</span> ugrás · <span class="keycap">TAB</span> pontok</span><span id="progressInstruction">Aranyat kapsz a megtett útért is.</span></div>
     </section><aside class="side-column"><section class="panel build-panel hidden" id="buildPanel"></section><section class="panel side-card chat-card"><h3>💬 Játékchat</h3><div class="chat-messages" id="chatMessages"></div><form class="chat-entry" id="chatForm"><input id="chatInput" maxlength="260" placeholder="Üzenet a csapatnak…" autocomplete="off"><button type="submit" aria-label="Küldés">➤</button></form></section><section class="panel side-card"><h3>🧰 A táskád</h3><div id="inventoryInfo" class="muted" style="font-size:11px;line-height:1.7"></div></section></aside></div>`;
   $('exitGameBtn').addEventListener('click', () => { socket.emit('leaveRoom'); roomState = null; livePlayers = []; currentRenderedPhase = null; switchScreen('home'); });
-  $('chatForm').addEventListener('submit', e => { e.preventDefault(); const text = $('chatInput').value.trim(); if (!text) return; socket.emit('chat', { text }, result => { if (!result?.ok) toast(result?.error || 'Az üzenet nem küldhető el.'); }); $('chatInput').value = ''; });
+  $('chatForm').addEventListener('submit', e => { e.preventDefault(); const text = $('chatInput').value.trim(); if (!text) return; socket.emit('chat', { text }, result => { if (!result?.ok) toast(result?.error || 'Az üzenet nem küldhető el.'); }); $('chatInput').value = ''; $('chatInput').blur(); $('worldCanvas')?.focus({ preventScroll: true }); });
   $('closeScoreButton').addEventListener('click', () => $('scoreOverlay').classList.add('hidden'));
   const canvas = $('worldCanvas');
+  canvas.addEventListener('pointerdown', () => { $('chatInput')?.blur(); canvas.focus({ preventScroll: true }); });
   canvas.addEventListener('pointermove', e => {
     const rect = canvas.getBoundingClientRect();
     mouseWorld = { x: ((e.clientX - rect.left) / rect.width) * CANVAS_W, y: ((e.clientY - rect.top) / rect.height) * CANVAS_H };
   });
   canvas.addEventListener('pointerleave', () => { mouseWorld = null; });
+  // Focus the playfield whenever a race begins, so W works straight away even
+  // if the previous screen had a focused button/input on this machine.
+  canvas.focus({ preventScroll: true });
   canvas.addEventListener('click', e => {
     if (!roomState || roomState.phase !== 'build' || !selectedBuildType) return;
     if (roomState.currentBuilderId !== socket.id) return toast('Most nem te építkezel.');
@@ -247,7 +254,8 @@ function renderGame() {
     const rawY = ((e.clientY - rect.top) / rect.height) * CANVAS_H;
     const x = Math.max(28, Math.min(CANVAS_W - 28, rawX));
     // The cursor marks the center of the build; groundY is the sprite's lower anchor.
-    const groundY = Math.max(55, Math.min(CANVAS_H - 20, rawY + 20));
+    const groundY = Math.max(50, Math.min(600, rawY + 20));
+    if (x >= GOAL_BUILD_LIMIT) return toast('A zászló körül szabadon kell hagyni a célzónát!');
     const type = selectedBuildType;
     socket.emit('placeBuild', { type, x, groundY }, result => {
       if (!result?.ok) toast(result?.error || 'Nem sikerült építeni.');
@@ -304,7 +312,7 @@ function updateBuildControls() {
   const builder = roomState.players.find(p => p.id === roomState.currentBuilderId);
   if (!isMe) selectedBuildType = null;
   const cards = ITEMS.map(item => `<button type="button" class="shop-item ${selectedBuildType===item.type?'selected':''}" data-item="${item.type}" ${!isMe || (me?.gold ?? 0) < item.price ? 'disabled' : ''}><span class="shop-icon">${item.icon}</span><strong>${item.name}</strong><small>🪙 ${item.price}</small></button>`).join('');
-  panel.innerHTML = `<div class="build-top"><div><h3>🔨 Építkezési fázis</h3><p>${isMe ? 'Válassz ikont, majd kattints bárhová a pályán.' : `Most ${escapeHtml(builder?.name || 'egy játékos')} építkezik.`}</p></div><span class="build-turn-pill">${isMe?'TE JÖSSZ':'VÁRJ A SORODRA'}</span></div><div class="shop-grid">${cards}</div><div class="build-footer"><span class="build-help">A szellem-előnézet követi az egeret. Platformra, levegőbe és víz fölé is építhetsz.</span>${isMe?'<button class="ghost-button" id="skipBuildBtn">Kihagyom →</button>':''}</div>`;
+  panel.innerHTML = `<div class="build-top"><div><h3>🔨 Építkezési fázis</h3><p>${isMe ? 'Válassz ikont, majd kattints bárhová a pályán.' : `Most ${escapeHtml(builder?.name || 'egy játékos')} építkezik.`}</p></div><span class="build-turn-pill">${isMe?'TE JÖSSZ':'VÁRJ A SORODRA'}</span></div><div class="shop-grid">${cards}</div><div class="build-footer"><span class="build-help">Az előnézet pontosan mutatja a helyet. Levegőbe is építhetsz; a zászló körül a célzóna tiltott.</span>${isMe?'<button class="ghost-button" id="skipBuildBtn">Kihagyom →</button>':''}</div>`;
   panel.querySelectorAll('[data-item]').forEach(btn => btn.addEventListener('click', () => {
     const type = btn.dataset.item;
     if (type === 'shield') {
@@ -314,7 +322,11 @@ function updateBuildControls() {
   if ($('skipBuildBtn')) $('skipBuildBtn').addEventListener('click', () => emitAck('skipBuild', {}, 'Kihagytad az építkezést.'));
 }
 
-const CANVAS_W = 1100, CANVAS_H = 620, GROUND_Y = 430, PLAYER_H = 44;
+const CANVAS_W = 1100, CANVAS_H = 620, GROUND_Y = 430, PLAYER_H = 54, PLAYER_HALF_W = 15;
+// A clear landing/approach lane around the finish flag. Objects can be placed
+// anywhere else, including in mid-air, but never where they could seal the goal.
+const GOAL_SAFE_LEFT = 910;
+const GOAL_BUILD_LIMIT = GOAL_SAFE_LEFT - 28; // keep the whole object outside the goal corridor
 const PLATFORMS = [
   { x: 0,   width: 290, top: 430 },
   { x: 324, width: 128, top: 475 },
@@ -323,16 +335,45 @@ const PLATFORMS = [
   { x: 830, width: 116, top: 470 },
   { x: 958, width: 142, top: 390 }
 ];
+function getSolidSurfaces() {
+  const surfaces = PLATFORMS.map((p, i) => ({ x: p.x, width: p.width, top: p.top, kind: 'platform', key: `platform-${i}` }));
+  for (const o of (roomState?.obstacles || [])) {
+    // Crates are solid blocks: the top is a stable landing surface and the
+    // sides/underside stop the avatar. Other props are hazards/boosters.
+    if (o.type === 'crate') {
+      const groundY = Number.isFinite(o.groundY) ? o.groundY : GROUND_Y;
+      surfaces.push({ x: o.x - 21, width: 42, top: groundY - 39, bottom: groundY, kind: 'crate', key: o.id, object: o });
+    }
+  }
+  return surfaces;
+}
+function overlapsHorizontally(x, surface) {
+  return x + PLAYER_HALF_W > surface.x + 2 && x - PLAYER_HALF_W < surface.x + surface.width - 2;
+}
 function findPlatformAtX(x, padding = 8) {
   return PLATFORMS.find(p => x >= p.x + padding && x <= p.x + p.width - padding) || null;
 }
 function isStandingOnPlatform(x, feetY) {
-  return PLATFORMS.some(p => x >= p.x + 9 && x <= p.x + p.width - 9 && Math.abs(feetY - p.top) <= 4);
+  return getSolidSurfaces().some(s => overlapsHorizontally(x, s) && Math.abs(feetY - s.top) <= 8);
+}
+function getObstacleBounds(o) {
+  const x = Number(o.x) || 0;
+  const ground = Number.isFinite(o.groundY) ? o.groundY : GROUND_Y;
+  if (o.type === 'crate') return { left: x - 21, right: x + 21, top: ground - 39, bottom: ground };
+  if (o.type === 'saw') return { left: x - 25, right: x + 25, top: ground - 47, bottom: ground + 2 };
+  if (o.type === 'spikes') return { left: x - 27, right: x + 27, top: ground - 30, bottom: ground + 4 };
+  if (o.type === 'spring') return { left: x - 26, right: x + 26, top: ground - 40, bottom: ground + 4 };
+  if (o.type === 'barrel') return { left: x - 23, right: x + 23, top: ground - 37, bottom: ground + 3 };
+  return { left: x - 20, right: x + 20, top: ground - 30, bottom: ground + 3 };
+}
+function avatarOverlapsObstacle(x, feetY, o) {
+  const b = getObstacleBounds(o);
+  const avatar = { left: x - PLAYER_HALF_W, right: x + PLAYER_HALF_W, top: feetY - PLAYER_H, bottom: feetY + 3 };
+  return avatar.right > b.left && avatar.left < b.right && avatar.bottom > b.top && avatar.top < b.bottom;
 }
 function gameLoop(now) {
   if (currentScreen !== 'game' || !roomState || !['race','build'].includes(roomState.phase)) { rafId = null; physicsAccumulator = 0; return; }
-  // Fixed 120 Hz physics avoids variable gravity/landing results that feel like a
-  // visual shake on W-jumps, especially when a browser frame is delayed.
+  // Keep simulation steps small and deterministic, even after a delayed browser frame.
   const frameDt = Math.min(0.05, Math.max(0, (now - lastTick) / 1000));
   lastTick = now;
   physicsAccumulator += frameDt;
@@ -343,41 +384,102 @@ function gameLoop(now) {
     physicsAccumulator -= fixedStep;
     steps++;
   }
+  // Drop excessive catch-up after a stalled tab; don't turn it into a burst of jumps.
+  if (steps === 8 && physicsAccumulator > fixedStep * 2) physicsAccumulator = 0;
   drawWorld(now);
   updateGameChrome();
   rafId = requestAnimationFrame(gameLoop);
 }
 function physicsStep(dt, now) {
   if (!roomState || roomState.phase !== 'race') return;
-  const me = getMe(); if (!me || me.finished) { motion.moving = false; return; }
+  const me = getMe();
+  if (!me || me.finished) { motion.moving = false; return; }
   if (now < motion.pauseUntil) return;
 
   let feetY = GROUND_Y + motion.y;
-  if (motion.grounded && !isStandingOnPlatform(motion.x, feetY)) motion.grounded = false;
-  if (jumpQueued && motion.grounded) {
-    motion.vy = -590; motion.grounded = false; jumpQueued = false;
+  if (motion.grounded && !isStandingOnPlatform(motion.x, feetY)) {
+    motion.grounded = false;
+    motion.coyoteUntil = now + COYOTE_TIME_MS;
+  }
+  if (motion.grounded) motion.coyoteUntil = now + COYOTE_TIME_MS;
+
+  // W is buffered briefly and has a small coyote window, so a landing/ledge
+  // frame can't randomly eat the jump input on slower machines.
+  if (jumpQueuedUntil && now > jumpQueuedUntil) jumpQueuedUntil = 0;
+  if (jumpQueuedUntil && (motion.grounded || now <= motion.coyoteUntil)) {
+    motion.vy = -625;
+    motion.grounded = false;
+    motion.jumping = true;
+    jumpQueuedUntil = 0;
+    motion.coyoteUntil = 0;
   }
 
   const left = !!(keys.ArrowLeft || keys.KeyA), right = !!(keys.ArrowRight || keys.KeyD);
   motion.moving = left !== right;
+  const previousX = motion.x;
+  let nextX = motion.x;
   if (left !== right) {
     motion.face = right ? 1 : -1;
-    motion.x += (right ? 245 : -245) * dt;
+    nextX += (right ? 245 : -245) * dt;
   }
-  motion.x = Math.max(22, Math.min(CANVAS_W - 35, motion.x));
+  nextX = Math.max(PLAYER_HALF_W + 2, Math.min(CANVAS_W - PLAYER_HALF_W - 5, nextX));
 
-  // Walking off a platform starts a fall; landing is detected against each real platform.
+  // Crates have real, solid side collisions. Being above the top lets the
+  // player pass over them; touching the side while grounded stops movement.
+  const currentFeet = GROUND_Y + motion.y;
+  const currentHead = currentFeet - PLAYER_H;
+  for (const o of (roomState.obstacles || [])) {
+    if (o.type !== 'crate') continue;
+    const b = getObstacleBounds(o);
+    const verticalOverlap = currentFeet > b.top + 2 && currentHead < b.bottom - 2;
+    const horizontalOverlap = nextX + PLAYER_HALF_W > b.left && nextX - PLAYER_HALF_W < b.right;
+    if (verticalOverlap && horizontalOverlap && nextX !== previousX) {
+      if (right && previousX <= b.left - PLAYER_HALF_W + 1) nextX = b.left - PLAYER_HALF_W;
+      else if (left && previousX >= b.right + PLAYER_HALF_W - 1) nextX = b.right + PLAYER_HALF_W;
+      else if (right && previousX < o.x) nextX = Math.min(nextX, b.left - PLAYER_HALF_W);
+      else if (left && previousX > o.x) nextX = Math.max(nextX, b.right + PLAYER_HALF_W);
+    }
+  }
+  motion.x = Math.max(PLAYER_HALF_W + 2, Math.min(CANVAS_W - PLAYER_HALF_W - 5, nextX));
+
   feetY = GROUND_Y + motion.y;
-  if (motion.grounded && !isStandingOnPlatform(motion.x, feetY)) motion.grounded = false;
+  if (motion.grounded && !isStandingOnPlatform(motion.x, feetY)) {
+    motion.grounded = false;
+    motion.coyoteUntil = now + COYOTE_TIME_MS;
+  }
+
   if (!motion.grounded) {
-    const prevFeet = feetY;
-    motion.vy += 1420 * dt;
-    feetY += motion.vy * dt;
+    const previousFeet = feetY;
+    const previousHead = previousFeet - PLAYER_H;
+    motion.vy += 1500 * dt;
+    feetY = previousFeet + motion.vy * dt;
+    const currentHeadAfter = feetY - PLAYER_H;
+    const surfaces = getSolidSurfaces();
     if (motion.vy >= 0) {
-      for (const platform of PLATFORMS) {
-        const overlaps = motion.x >= platform.x + 7 && motion.x <= platform.x + platform.width - 7;
-        if (overlaps && prevFeet <= platform.top && feetY >= platform.top) {
-          feetY = platform.top; motion.vy = 0; motion.grounded = true; break;
+      // Swept landing collision catches narrow platforms even if a frame jumps over the edge.
+      let landing = null;
+      for (const surface of surfaces) {
+        if (!overlapsHorizontally(motion.x, surface)) continue;
+        if (previousFeet <= surface.top + 3 && feetY >= surface.top) {
+          if (!landing || surface.top < landing.top) landing = surface;
+        }
+      }
+      if (landing) {
+        feetY = landing.top;
+        motion.vy = 0;
+        motion.grounded = true;
+        motion.coyoteUntil = now + COYOTE_TIME_MS;
+      }
+    } else {
+      // Hit the underside of an airborne crate instead of passing through it.
+      for (const o of (roomState.obstacles || [])) {
+        if (o.type !== 'crate') continue;
+        const b = getObstacleBounds(o);
+        const horizontalOverlap = motion.x + PLAYER_HALF_W > b.left && motion.x - PLAYER_HALF_W < b.right;
+        if (horizontalOverlap && previousHead >= b.bottom - 2 && currentHeadAfter <= b.bottom) {
+          feetY = b.bottom + PLAYER_H;
+          motion.vy = 0;
+          break;
         }
       }
     }
@@ -386,44 +488,61 @@ function physicsStep(dt, now) {
     motion.vy = 0;
   }
 
-  // Respawn before the sprite disappears under the canvas. The server gets an
-  // explicit reset event so remote players see the same position and no stale
-  // falling packet can pull the character back down.
-  if (GROUND_Y + motion.y > CANVAS_H - 48 && now - lastFallAt > 900) {
+  // Fall recovery is immediate: no long period where the avatar falls below the canvas.
+  if (feetY > CANVAS_H - 52 && now - lastFallAt > 300) {
     lastFallAt = now;
     motion.x = getMe()?.startX ?? 36;
-    motion.y = 0; motion.vy = 0; motion.grounded = true; motion.moving = false; motion.jumping = false;
-    motion.pauseUntil = now + 140;
-    jumpQueued = false;
+    motion.y = 0; motion.vy = 0; motion.grounded = true;
+    motion.moving = false; motion.jumping = false; motion.coyoteUntil = 0;
+    motion.pauseUntil = now + 170;
+    jumpQueuedUntil = 0;
     socket.emit('fellOffCourse');
     pushLocalMessage('💦 Leestél a pályáról — visszakerültél a rajthoz!');
     return;
   }
   motion.jumping = !motion.grounded;
 
-  const playerFeet = GROUND_Y + motion.y;
+  // Full rectangular hitboxes make the visible art and collisions agree.
+  // Crates are handled as solid platforms; hazards and spring are trigger objects.
   for (const o of (roomState.obstacles || [])) {
-    const dx = motion.x - o.x;
-    const obstacleGround = Number.isFinite(o.groundY) ? o.groundY : GROUND_Y;
-    const sameLevel = Math.abs(playerFeet - obstacleGround) < 34;
-    if (!sameLevel) continue;
-    if (o.type === 'crate' && Math.abs(dx) < 34 && motion.y > (obstacleGround - GROUND_Y) - 34) {
-      if (right) motion.x = o.x - 35;
-      else if (left) motion.x = o.x + 35;
-    }
-    if (Math.abs(dx) < (o.type === 'barrel' ? 29 : 25) && motion.y > (obstacleGround - GROUND_Y) - 28) {
-      if (o.type === 'spring') {
-        if (now - (lastHitAt[o.id] || 0) > 1100) {
-          lastHitAt[o.id] = now; motion.vy = -760; motion.grounded = false; motion.y = (obstacleGround - GROUND_Y) - 3; motion.x = Math.min(CANVAS_W - 40, motion.x + 18);
-          socket.emit('hitHazard', { id: o.id });
+    if (o.type === 'crate') continue;
+    if (!avatarOverlapsObstacle(motion.x, GROUND_Y + motion.y, o)) continue;
+    if (lastHitAt[o.id] && now - lastHitAt[o.id] <= 1000) continue;
+    lastHitAt[o.id] = now;
+    if (o.type === 'spring') {
+      motion.vy = -700;
+      motion.grounded = false;
+      motion.jumping = true;
+      motion.coyoteUntil = 0;
+      socket.emit('hitHazard', { id: o.id });
+    } else if (['saw','spikes','barrel'].includes(o.type)) {
+      // Freeze briefly on contact and let the server decide death vs shield.
+      // This avoids one machine guessing a respawn while another machine doesn't.
+      motion.moving = false;
+      motion.pauseUntil = now + 180;
+      jumpQueuedUntil = 0;
+      socket.emit('hitHazard', { id: o.id }, result => {
+        if (!result?.ok) {
+          // A stale network snapshot/cooldown rejected this contact; retry after a
+          // short delay instead of leaving the character permanently invulnerable.
+          lastHitAt[o.id] = performance.now() - 760;
+          motion.pauseUntil = performance.now() + 100;
         }
-      } else if (['saw','spikes','barrel'].includes(o.type) && now - (lastHitAt[o.id] || 0) > 1100) {
-        lastHitAt[o.id] = now; motion.pauseUntil = now + 100;
-        socket.emit('hitHazard', { id: o.id });
-      }
+      });
+      return;
     }
   }
-  if (now - lastSendAt > 65) {
+
+  // Goal can only be reached while on the final flag platform. This prevents
+  // accidental finishes while falling past the flag or touching it from below.
+  if (motion.x >= CANVAS_W - 90 && Math.abs((GROUND_Y + motion.y) - PLATFORMS[PLATFORMS.length - 1].top) <= 30) {
+    if (now - lastSendAt > 55) {
+      lastSendAt = now;
+      socket.emit('playerPosition', { x: motion.x, y: motion.y, face: motion.face, moving: motion.moving, jumping: motion.jumping });
+    }
+    return;
+  }
+  if (now - lastSendAt > 55) {
     lastSendAt = now;
     socket.emit('playerPosition', { x: motion.x, y: motion.y, face: motion.face, moving: motion.moving, jumping: motion.jumping });
   }
@@ -436,6 +555,15 @@ function drawWorld(now) {
   drawScenery(ctx, length, now, 0);
   for (const o of roomState.obstacles || []) drawObstacle(ctx, o, now);
   drawGoal(ctx, length, now);
+  if (isBuild) {
+    ctx.save();
+    ctx.fillStyle = '#ff53631a'; ctx.fillRect(GOAL_BUILD_LIMIT, 0, length - GOAL_BUILD_LIMIT, CANVAS_H);
+    ctx.strokeStyle = '#ff6b7d'; ctx.lineWidth = 2; ctx.setLineDash([8, 6]);
+    ctx.beginPath(); ctx.moveTo(GOAL_BUILD_LIMIT, 0); ctx.lineTo(GOAL_BUILD_LIMIT, CANVAS_H); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle = '#552638dd'; roundRect(ctx, GOAL_BUILD_LIMIT + 10, 60, 154, 24, 7); ctx.fill();
+    ctx.fillStyle = '#fff1f3'; ctx.font = 'bold 11px Nunito'; ctx.textAlign = 'center'; ctx.fillText('CÉLZÓNA – TILOS ÉPÍTENI', GOAL_BUILD_LIMIT + 87, 76);
+    ctx.restore();
+  }
   const latest = new Map((livePlayers.length ? livePlayers : roomState.players).map(p => [p.id, p]));
   const players = (roomState.players || []).map(p => ({ ...p, ...(latest.get(p.id) || {}) }));
   for (const p of players) {
@@ -462,18 +590,19 @@ function drawWorld(now) {
   }
   if (isBuild && selectedBuildType && mouseWorld && selectedBuildType !== 'shield') {
     const px = Math.max(28, Math.min(length - 28, mouseWorld.x));
-    const ground = Math.max(55, Math.min(CANVAS_H - 20, mouseWorld.y + 20));
+    const ground = Math.max(50, Math.min(600, mouseWorld.y + 20));
+    const inGoalZone = px >= GOAL_BUILD_LIMIT;
     ctx.save();
     ctx.globalAlpha = 0.72;
-    ctx.strokeStyle = '#ffe16a'; ctx.lineWidth = 2; ctx.setLineDash([5, 5]);
-    ctx.beginPath(); ctx.moveTo(px, Math.max(30, ground - 60)); ctx.lineTo(px, Math.min(CANVAS_H - 8, ground + 8)); ctx.stroke(); ctx.setLineDash([]);
+    ctx.strokeStyle = inGoalZone ? '#ff6177' : '#ffe16a'; ctx.lineWidth = 2; ctx.setLineDash([5, 5]);
+    ctx.beginPath(); ctx.moveTo(px, Math.max(15, ground - 60)); ctx.lineTo(px, Math.min(CANVAS_H - 8, ground + 8)); ctx.stroke(); ctx.setLineDash([]);
     ctx.globalAlpha = 0.68;
     drawObstacle(ctx, { type: selectedBuildType, x: px, groundY: ground }, now);
     ctx.globalAlpha = 1;
-    ctx.strokeStyle = '#5be89b'; ctx.lineWidth = 2.5;
+    ctx.strokeStyle = inGoalZone ? '#ff6177' : '#5be89b'; ctx.lineWidth = 2.5;
     ctx.beginPath(); ctx.ellipse(px, ground + 2, 28, 8, 0, 0, Math.PI * 2); ctx.stroke();
-    ctx.fillStyle = '#123d30'; roundRect(ctx, Math.max(4, Math.min(w - 112, px - 54)), Math.max(52, ground - 72), 108, 23, 8); ctx.fill();
-    ctx.fillStyle = '#ddffe9'; ctx.font = 'bold 12px Nunito'; ctx.textAlign = 'center'; ctx.fillText('IDE ÉPÜL', Math.max(58, Math.min(w - 58, px)), Math.max(67, ground - 57));
+    ctx.fillStyle = inGoalZone ? '#651d31' : '#123d30'; roundRect(ctx, Math.max(4, Math.min(w - 112, px - 54)), Math.max(52, ground - 72), 108, 23, 8); ctx.fill();
+    ctx.fillStyle = inGoalZone ? '#fff0f2' : '#ddffe9'; ctx.font = 'bold 12px Nunito'; ctx.textAlign = 'center'; ctx.fillText(inGoalZone ? 'CÉLZÓNA – TILOS' : 'IDE ÉPÜL', Math.max(58, Math.min(w - 58, px)), Math.max(67, ground - 57));
     ctx.restore();
   }
   if (!isBuild) {
@@ -627,10 +756,10 @@ window.addEventListener('keydown', e => {
     return;
   }
   if (roomState?.phase !== 'race') return;
-  if (e.code === 'Space') { e.preventDefault(); return; } // Space intentionally does not jump.
+  if (e.code === 'Space') { e.preventDefault(); return; } // W is the only jump key.
   if (e.code === 'KeyW') {
     e.preventDefault();
-    if (!e.repeat && motion.grounded) jumpQueued = true;
+    if (!e.repeat) jumpQueuedUntil = performance.now() + JUMP_BUFFER_MS;
     return;
   }
   if (['ArrowLeft','ArrowRight'].includes(e.code)) e.preventDefault();
@@ -640,7 +769,7 @@ window.addEventListener('keyup', e => {
   keys[e.code] = false;
   if (e.code === 'Tab') $('scoreOverlay')?.classList.add('hidden');
 });
-window.addEventListener('blur', () => { keys = Object.create(null); jumpQueued = false; $('scoreOverlay')?.classList.add('hidden'); });
+window.addEventListener('blur', () => { keys = Object.create(null); jumpQueuedUntil = 0; $('scoreOverlay')?.classList.add('hidden'); });
 
 // Keep the timer fresh even in the lobby-to-game transitions.
 setInterval(() => { if (currentScreen === 'game' && roomState) updateGameChrome(); }, 250);

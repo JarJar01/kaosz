@@ -1,15 +1,15 @@
 ALLATKAOSZ — ONLINE 2D ALLATOS AKADALYVERSENY
 ================================================
 
-JAVITASOK EBBEN A VALTOZATBAN
+JAVITASOK EBBEN A VALTOZATBAN (1.3)
 ---------------------------
-- A helyi karakter mozgasa helyben szimulalt; a halozati poziciok nem irjak felul minden frame-ben, ez megszunteti az ugraskori razkodast
-- A fizika fix 120 Hz-es lepesekkel fut, a tavoli karakterek pozicioja simitva jelenik meg
-- Leeseskor a szerverrel egyeztetett ujraeles tortenik
-- HALAL vagy pajzsos visszalokes utan a kliens koveti a szerver poziciojat
+- A helyi karakter mozgasa helyben szimulalt; a halozati poziciok nem irjak felul minden frame-ben. Az ugrashoz gombpuffer es peremsegitseg van, a palya/platform utkozesek toleransabbak
+- A fizika fix 120 Hz-es lepesekkel fut, az ugrashoz 180 ms-os gombpuffer es 140 ms-os peremsegitseg tartozik; a tavoli karakterek pozicioja simitva jelenik meg
+- Leeseskor az avatar azonnal visszakerul a rajtra, a szerverrel egyeztetett ujraelessel
+- Halal vagy pajzsos visszalokes utan a kliens a szerver donteset koveti; a csapdaerintes eredmenyet nem probalja elore kitalalni
 - A jatekosok a bal oldali rajtplatformon kissé eltolva indulnak, a nevtablakat negy sorban rendezi a jatek
-- A TAB-os ponttabla a jatek kozben jelenik meg, a Space nem ugras
-- Az epitmenyek a palya barmely lathato pontjara elhelyezhetok; valasztaskor egermutatohoz kotott szellem-elonezet latszik
+- A TAB-os ponttabla a jatek kozben jelenik meg, a Space nem ugras, a jatek indulasakor a palya fokuszt kap, igy a W azonnal mukodik
+- Az epitmenyek a palya lathato reszen platformra, levegobe vagy viz fole is helyezhetok; a zaszlo koruli celzona tiltott, hogy ne lehessen elzarni
 
 A prototipus fo jellemzoi
 ------------------------
@@ -24,7 +24,7 @@ A prototipus fo jellemzoi
 - 5 epitmeny: csapdalada, forgo furesz, tuskek, rugos kilovo, gurulo hordo
 - Pajzs vasarolhato; egy halalos talalatotol megved, es visszalok
 - Egyetlen rovid, fix palya tobb platformmal; az alapcsapdak adottak, a jatekosok epitmenyei a tovabbi korokben is megmaradnak
-- Epitmeny platformra, levegobe vagy viz fole is helyezheto; az atatlatszo elo-nezet mutatja a pontos helyet
+- Epitmeny platformra, levegobe vagy viz fole is helyezheto; az atatlatszo elo-nezet a lerakas helyen marad. A ladan stabilan meg lehet allni/ugrani, a furesz, tuske es hordo veszelyes
 - Chat es osszesitett ponttabla
 - A menu grafikaval, a karakterek es a palya pedig animalt, rajzolt megjelenessel keszulnek
 
@@ -66,4 +66,4 @@ Epitkezeskor: valassz egy epitmeny-ikont a jobb oldali panelen, mozgassd az eger
 
 MEGJEGYZES
 ----------
-Javitott valtozat: rovid, fix palya; TAB-os ponttabla; W billentyus ugras; animalt allatkarakterek; stabilitast javito fixlepeses fizika; barmely palyaponton elhelyezheto epitmenyek. A JavaScript fajlok szintaxisellenorzese sikeres volt, de ebben a letrehozasi kornyezetben az npm csomagok letoltese idotullepes miatt nem fejezodott be, ezert teljes, tobbgepes futtatasi tesztet nem tudtam lefuttatni. Az elso inditaskor a start.bat probalja telepiteni a fuggosegeket.
+Javitott 1.3 valtozat: rovid, fix palya; TAB-os ponttabla; W billentyus ugras gombpufferrel es peremsegitseggel; fixlepeses fizika; stabil leeses-visszaallas; valodi lada-platform/oldalutkozes; objektum-figura teglalap alapú csapdaerzekeles; szerver altal ellenorzott csapdaeredmeny; epitmeny-elonezet es a celzaszlo koruli tiltott zona. A JavaScript fajlok szintaxisellenorzese sikeres volt, de ebben a letrehozasi kornyezetben az npm csomagok letoltese idotullepes miatt nem fejezodott be, ezert teljes, tobbgepes futtatasi tesztet nem tudtam lefuttatni. Az elso inditaskor a start.bat probalja telepiteni a fuggosegeket.
