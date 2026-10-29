@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="hu">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#16233d">
+  <title>ÁllatKáosz — Építs, versenyezz, érj célba!</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="/socket.io/socket.io.js"></script>
+  <script defer src="/app.js"></script>
+</head>
+<body>
+  <div class="ambient ambient-one"></div><div class="ambient ambient-two"></div>
+  <header class="topbar">
+    <a class="brand" href="#" id="brandHome" aria-label="ÁllatKáosz főmenü">
+      <span class="brand-paw">🐾</span><span>ÁLLAT<span class="brand-accent">KÁOSZ</span></span>
+    </a>
+    <div class="topbar-right"><span class="online-dot"></span><span id="connectionLabel">Kapcsolódás…</span><button class="ghost-button small" id="helpButton">❔ Súgó</button></div>
+  </header>
+
+  <main id="screenHome" class="screen home-screen">
+    <section class="hero-panel">
+      <div class="hero-copy">
+        <div class="eyebrow"><span class="eyebrow-pip"></span> ONLINE ÁLLATOS VERSENY</div>
+        <h1>Építs. <span>Ugrass.</span><br>Juss a zászlóhoz!</h1>
+        <p>Fuss, ugorj és szívasd meg a többieket! Minden kör után új akadályok kerülnek a közös pályára — a végén csak egy állat lehet a bajnok.</p>
+        <div class="hero-pills"><span>👥 2–8 játékos</span><span>🛠️ Körönként építkezés</span><span>🏁 Közös pálya</span></div>
+      </div>
+      <div class="hero-image-wrap"><img src="/assets/hero-gameplay.webp" class="hero-image" alt="Állatos akadálypálya játékillusztráció"><div class="hero-image-bubble">🐷 <span>Ki ér be elsőnek?</span></div></div>
+      <div class="hero-decoration decor-star">✦</div><div class="hero-decoration decor-paw">🐾</div>
+    </section>
+
+    <section class="entry-grid">
+      <article class="panel create-panel">
+        <div class="panel-icon create-icon">🏁</div>
+        <h2>Új szoba</h2><p>Te leszel a szobagazda, és beállíthatod a verseny szabályait.</p>
+        <label for="homeName">A neved</label><input id="homeName" maxlength="16" placeholder="Pl. KapibaraKirály" autocomplete="nickname">
+        <button class="primary-button full" id="createRoomBtn">Szoba létrehozása <span>→</span></button>
+      </article>
+      <article class="panel join-panel">
+        <div class="panel-icon join-icon">🚪</div>
+        <h2>Csatlakozás</h2><p>Írd be a barátod által küldött szobakódot.</p>
+        <label for="joinName">A neved</label><input id="joinName" maxlength="16" placeholder="Mi legyen a neved?" autocomplete="nickname">
+        <label for="roomCodeInput">Szobakód</label><div class="join-code-row"><input id="roomCodeInput" maxlength="5" placeholder="ABCDE" autocomplete="off"><button class="primary-button" id="joinRoomBtn">Belépés</button></div>
+      </article>
+      <article class="how-card">
+        <div class="how-step"><span>1</span><div><strong>Válassz állatot</strong><small>Malac, kapibara, ló, pingvin vagy mosómedve.</small></div></div>
+        <div class="how-step"><span>2</span><div><strong>Versenyezzetek egyszerre</strong><small>Ugrálj a csapdákon át a jobb oldali zászlóhoz.</small></div></div>
+        <div class="how-step"><span>3</span><div><strong>Építs akadályt!</strong><small>A kör végén költs aranyat, és nehezítsd meg a következő futamot.</small></div></div>
+      </article>
+    </section>
+    <footer class="footer-note">Egy böngészős játék a baráti társaságnak <span>✦</span> Mozgás: A/D vagy ←/→ · Ugrás: Space / W / ↑</footer>
+  </main>
+
+  <main id="screenLobby" class="screen hidden"></main>
+  <main id="screenGame" class="screen hidden"></main>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <div class="modal-backdrop hidden" id="helpModal"><section class="modal panel"><button class="modal-close" id="closeHelp">×</button><h2>🐾 Hogyan kell játszani?</h2><p><b>Verseny:</b> A/D vagy bal/jobb nyíllal fuss, Space/W/fel nyíllal ugorj. Mindenki egyszerre indul.</p><p><b>Pontok:</b> az első célba érő kapja a legtöbbet. Aki kifut az időből célba érés nélkül, abban a körben nem kap célpontot. Aranyat a megtett útért is gyűjtesz.</p><p><b>Építkezés:</b> körönként mindenki egyszer következik, és legfeljebb egy akadályt vagy egy pajzsot vesz. A pályára rakott építmények a következő körökben is ott maradnak.</p><p><b>Csapdák:</b> a fűrész és a tüskék visszadobnak a rajthoz, ha nincs pajzsod. A pajzs egyszer megvéd egy találattól. A ládát át lehet ugrani, a rugó fellök, a hordó pedig veszélyes akadály.</p><p class="muted">Online játékhoz a szobát létrehozó gépnek futtatnia kell a szervert; ugyanazon hálózaton a többiek a gép helyi IP-címével csatlakozhatnak.</p></section></div>
+</body>
+</html>
