@@ -28,9 +28,12 @@ const MAPS = { meadow: '🌳 Kezdő mező', moon: '🌙 Hold', mars: '🔴 Mars'
 const ITEMS = [
   { type: 'crate', name: 'Fa láda', icon: '📦', price: 10, desc: 'Szilárd akadály, a tetejére fel lehet ugrani' },
   { type: 'stairs', name: 'Fa lépcső', icon: '🪜', price: 18, desc: 'Három lépcsőfok, segít magasabb platformra jutni' },
-  { type: 'spikecrate', name: 'Váltakozó tüskés láda', icon: '🗡️', price: 28, desc: 'Felváltva bal és jobb oldalán döf ki, majd visszahúzódik' },
+  { type: 'ladder', name: 'Fa létra', icon: '🪜', price: 22, desc: 'W nyomva tartásával felmászhatsz rajta' },
+  { type: 'spikecrate', name: 'Váltakozó tüskés láda', icon: '🗡️', price: 28, desc: 'Balra, jobbra, majd felfelé szúr, aztán visszahúzódik' },
   { type: 'spring', name: 'Rugós kilövő', icon: '🌀', price: 30, desc: 'Magasra repít' },
-  { type: 'barrel', name: 'Fahordó', icon: '🛢️', price: 25, desc: 'Nem öl meg: hátralök és rövid időre megállít' },
+  { type: 'barrel', name: 'Díszes fahordó', icon: '🛢️', price: 25, desc: 'Szilárd hordó, nem lök el és nem öl meg' },
+  { type: 'fan', name: 'Szélfújó ventilátor', icon: '🌀', price: 32, desc: 'Animált légáram, enyhén jobbra fúj' },
+  { type: 'icicle', name: 'Leeső jégcsap', icon: '🧊', price: 30, desc: 'Ha alá állsz, felülről leesik és visszaküld a rajthoz' },
   { type: 'shield', name: 'Pajzs', icon: '🛡️', price: 20, desc: 'Egy halálos csapdát kivéd' },
   { type: 'lifebuoy', name: 'Mentőöv', icon: '🛟', price: 30, desc: 'Egy leesést megúszol' },
   { type: 'jumpboots', name: 'Ugrócsizma', icon: '🥾', price: 35, desc: 'A következő ugrásod magasabb' }
@@ -73,7 +76,7 @@ let lastObservedRoundKey = '';
 let lastRoundBannerUntil = 0;
 let serverClockOffset = 0;
 function synchronizedNow() { return Date.now() + serverClockOffset; }
-let motion = { x: 45, y: 0, vy: 0, face: 1, moving: false, jumping: false, grounded: true, coyoteUntil: 0, pauseUntil: 0 };
+let motion = { x: 45, y: 0, vy: 0, face: 1, moving: false, jumping: false, grounded: true, coyoteUntil: 0, pauseUntil: 0, climbing: false };
 let mouseWorld = null;
 let jumpQueuedUntil = 0;
 let jumpHeld = false;
@@ -163,7 +166,7 @@ socket.on('roomState', next => {
       }]));
       if (next.phase === 'race') {
         const me = next.players.find(p => p.id === socket.id);
-        motion = { x: me?.x ?? me?.startX ?? 45, y: me?.y ?? 0, vy: 0, face: 1, moving: false, jumping: false, grounded: true, coyoteUntil: 0, pauseUntil: 0 };
+        motion = { x: me?.x ?? me?.startX ?? 45, y: me?.y ?? 0, vy: 0, face: 1, moving: false, jumping: false, grounded: true, coyoteUntil: 0, pauseUntil: 0, climbing: false };
         lastDeathCount = me?.deaths ?? 0; lastShieldCount = me?.shields ?? 0; lastLifebuoyCount = me?.lifebuoys ?? 0; lastKnockbackCount = me?.knockbackCount ?? 0;
         lastFallAt = 0; lastSendAt = 0;
         jumpQueuedUntil = 0; jumpHeld = false; jumpLaunchedByW = false; jumpHoldElapsed = 0; activeJumpHoldForce = JUMP_HOLD_FORCE; activeJumpMaxPower = JUMP_FULL_POWER; jumpBoostActiveThisJump = false;
@@ -197,16 +200,15 @@ socket.on('playersMoved', positions => {
     const rescued = lifebuoyCount < lastLifebuoyCount;
     const respawned = deathCount > lastDeathCount || rescued;
     const shieldKnockback = shieldCount < lastShieldCount;
-    const barrelKnockback = knockbackCount > lastKnockbackCount;
-    if (respawned || shieldKnockback || barrelKnockback) {
+    if (respawned || shieldKnockback) {
       motion.x = Number.isFinite(Number(me.x)) ? Number(me.x) : (getMe()?.startX ?? 36);
       motion.y = Number.isFinite(Number(me.y)) ? Number(me.y) : 0;
-      motion.vy = barrelKnockback && !respawned ? -150 : (shieldKnockback && !respawned ? -260 : 0);
+      motion.vy = shieldKnockback && !respawned ? -260 : 0;
       motion.moving = false;
       motion.grounded = respawned ? true : false;
       motion.jumping = !respawned && (shieldKnockback || barrelKnockback);
       motion.coyoteUntil = 0;
-      motion.pauseUntil = performance.now() + (respawned ? 170 : (barrelKnockback ? 420 : 90));
+      motion.pauseUntil = performance.now() + (respawned ? 170 : 90);
       jumpQueuedUntil = 0; jumpLaunchedByW = false; jumpBoostActiveThisJump = false;
     }
     lastDeathCount = deathCount; lastShieldCount = shieldCount; lastLifebuoyCount = lifebuoyCount; lastKnockbackCount = knockbackCount;
@@ -653,19 +655,27 @@ function getPlatformLayout() {
   return PLATFORM_LAYOUTS[roomState?.settings?.mapTheme || 'meadow'] || PLATFORM_LAYOUTS.meadow;
 }
 function getSpikeCrateState(o, time = synchronizedNow()) {
-  const phase = ((time + (Number(o.spikeOffset) || 0)) % 3000 + 3000) % 3000;
-  if (phase < 1000) return { side: 'left', extended: true, phase };
-  if (phase < 1500) return { side: 'left', extended: false, phase };
-  if (phase < 2500) return { side: 'right', extended: true, phase };
-  return { side: 'right', extended: false, phase };
+  // Cycle: left -> right -> top; every direction extends and then retracts.
+  const phase = ((time + (Number(o.spikeOffset) || 0)) % 3600 + 3600) % 3600;
+  const slot = Math.floor(phase / 1200);
+  const localPhase = phase - slot * 1200;
+  let progress = 0;
+  if (localPhase < 180) progress = localPhase / 180;
+  else if (localPhase < 720) progress = 1;
+  else if (localPhase < 900) progress = (900 - localPhase) / 180;
+  return { side: ['left', 'right', 'top'][Math.min(2, slot)], progress: Math.max(0, Math.min(1, progress)), extended: progress >= 0.72, phase: localPhase };
 }
 function getSpikeCrateHazardBounds(o, time = synchronizedNow()) {
   const state = getSpikeCrateState(o, time);
   if (!state.extended) return null;
   const x = Number(o.x) || 0, ground = Number.isFinite(o.groundY) ? o.groundY : GROUND_Y;
-  return state.side === 'left'
-    ? { left: x - 43, right: x - 23, top: ground - 29, bottom: ground - 2 }
-    : { left: x + 23, right: x + 43, top: ground - 29, bottom: ground - 2 };
+  if (state.side === 'left') return { left: x - 62, right: x - 19, top: ground - 51, bottom: ground - 3 };
+  if (state.side === 'right') return { left: x + 19, right: x + 62, top: ground - 51, bottom: ground - 3 };
+  return { left: x - 24, right: x + 24, top: ground - 84, bottom: ground - 36 };
+}
+function getIcicleTriggerBounds(o) {
+  const x = Number(o.x) || 0, ground = Number.isFinite(o.groundY) ? o.groundY : GROUND_Y;
+  return { left: x - 24, right: x + 24, top: ground - 112, bottom: ground + 8 };
 }
 function getSolidSurfaces() {
   const surfaces = getPlatformLayout().map((p, i) => ({ x: p.x, width: p.width, top: p.top, kind: 'platform', key: `platform-${i}` }));
@@ -673,6 +683,13 @@ function getSolidSurfaces() {
     const groundY = Number.isFinite(o.groundY) ? o.groundY : GROUND_Y;
     if (o.type === 'crate' || o.type === 'spikecrate') {
       surfaces.push({ x: o.x - 25, width: 50, top: groundY - 43, bottom: groundY, kind: o.type, key: o.id, object: o });
+    } else if (o.type === 'barrel') {
+      surfaces.push({ x: o.x - 22, width: 44, top: groundY - 36, bottom: groundY, kind: 'barrel', key: o.id, object: o });
+    } else if (o.type === 'fan') {
+      // The fan's protective housing is a solid, landable surface.
+      surfaces.push({ x: o.x - 22, width: 44, top: groundY - 42, bottom: groundY, kind: 'fan', key: o.id, object: o });
+    } else if (o.type === 'spring') {
+      surfaces.push({ x: o.x - 24, width: 48, top: groundY - 38, bottom: groundY, kind: 'spring', key: o.id, object: o });
     } else if (o.type === 'stairs') {
       // Three separate top surfaces make the staircase climbable, step by step.
       surfaces.push({ x: o.x - 34, width: 22, top: groundY - 12, bottom: groundY, kind: 'stairs', key: `${o.id}-s1`, object: o });
@@ -696,8 +713,11 @@ function getObstacleBounds(o) {
   const ground = Number.isFinite(o.groundY) ? o.groundY : GROUND_Y;
   if (o.type === 'crate' || o.type === 'spikecrate') return { left: x - 25, right: x + 25, top: ground - 43, bottom: ground };
   if (o.type === 'stairs') return { left: x - 34, right: x + 34, top: ground - 42, bottom: ground };
+  if (o.type === 'ladder') return { left: x - 17, right: x + 17, top: ground - 122, bottom: ground + 2 };
   if (o.type === 'spring') return { left: x - 26, right: x + 26, top: ground - 40, bottom: ground + 4 };
-  if (o.type === 'barrel') return { left: x - 22, right: x + 22, top: ground - 36, bottom: ground + 3 };
+  if (o.type === 'barrel') return { left: x - 23, right: x + 23, top: ground - 37, bottom: ground + 3 };
+  if (o.type === 'fan') return { left: x - 24, right: x + 24, top: ground - 42, bottom: ground + 4 };
+  if (o.type === 'icicle') return { left: x - 20, right: x + 20, top: ground - 90, bottom: ground + 3 };
   return { left: x - 20, right: x + 20, top: ground - 30, bottom: ground + 3 };
 }
 function avatarOverlapsBounds(x, feetY, b) {
@@ -736,6 +756,24 @@ function physicsStep(dt, now) {
   if (!me || me.finished) { motion.moving = false; return; }
   if (now < motion.pauseUntil) return;
 
+  // W climbs a ladder only when the avatar is close to it; otherwise it jumps normally.
+  const feetBeforeClimb = GROUND_Y + motion.y;
+  const nearbyLadder = (roomState.obstacles || []).find(o => o.type === 'ladder' && Math.abs(motion.x - o.x) <= 27 && feetBeforeClimb <= (Number.isFinite(o.groundY) ? o.groundY : GROUND_Y) + 6 && feetBeforeClimb >= (Number.isFinite(o.groundY) ? o.groundY : GROUND_Y) - 128);
+  if (jumpHeld && nearbyLadder) {
+    const ladderBottom = Number.isFinite(nearbyLadder.groundY) ? nearbyLadder.groundY : GROUND_Y;
+    const ladderTopFeet = ladderBottom - 120;
+    motion.x += (nearbyLadder.x - motion.x) * Math.min(1, 12 * dt);
+    motion.y = Math.max(ladderTopFeet - GROUND_Y, motion.y - 105 * dt);
+    motion.vy = 0; motion.grounded = false; motion.jumping = false; motion.moving = true;
+    motion.climbing = true; motion.face = 1; jumpQueuedUntil = 0; jumpLaunchedByW = false; jumpHoldElapsed = 0;
+    if (now - lastSendAt > 55) {
+      lastSendAt = now;
+      socket.emit('playerPosition', { x: motion.x, y: motion.y, vy: 0, face: motion.face, moving: true, jumping: false });
+    }
+    return;
+  }
+  if (motion.climbing) { motion.climbing = false; motion.grounded = isStandingOnPlatform(motion.x, feetBeforeClimb); motion.vy = 0; }
+
   let feetY = GROUND_Y + motion.y;
   if (motion.grounded && !isStandingOnPlatform(motion.x, feetY)) {
     motion.grounded = false;
@@ -773,12 +811,22 @@ function physicsStep(dt, now) {
   }
   nextX = Math.max(PLAYER_HALF_W + 2, Math.min(CANVAS_W - PLAYER_HALF_W - 5, nextX));
 
+  // Fan wind contributes to movement before collision resolution, so it cannot
+  // push the player through crates or other solid objects.
+  const fanFeetForWind = GROUND_Y + motion.y;
+  for (const fan of (roomState.obstacles || []).filter(o => o.type === 'fan')) {
+    const fanGround = Number.isFinite(fan.groundY) ? fan.groundY : GROUND_Y;
+    if (nextX >= fan.x + 18 && nextX <= fan.x + 155 && fanFeetForWind >= fanGround - 58 && fanFeetForWind <= fanGround + 18) {
+      nextX = Math.min(CANVAS_W - PLAYER_HALF_W - 5, nextX + 48 * dt);
+    }
+  }
+
   // Crates have real, solid side collisions. Being above the top lets the
   // player pass over them; touching the side while grounded stops movement.
   const currentFeet = GROUND_Y + motion.y;
   const currentHead = currentFeet - PLAYER_H;
   for (const o of (roomState.obstacles || [])) {
-    if (!['crate', 'spikecrate'].includes(o.type)) continue;
+    if (!['crate', 'spikecrate', 'barrel', 'fan'].includes(o.type)) continue;
     const b = getObstacleBounds(o);
     const verticalOverlap = currentFeet > b.top + 2 && currentHead < b.bottom - 2;
     const horizontalOverlap = nextX + PLAYER_HALF_W > b.left && nextX - PLAYER_HALF_W < b.right;
@@ -868,11 +916,13 @@ function physicsStep(dt, now) {
 
   // Solid crates/stairs are handled by platform collision; only active hazards trigger here.
   for (const o of (roomState.obstacles || [])) {
-    if (['crate', 'stairs'].includes(o.type)) continue;
+    if (['crate', 'stairs', 'ladder', 'barrel', 'fan'].includes(o.type)) continue;
     let overlaps = false;
     if (o.type === 'spikecrate') {
       const hazardBox = getSpikeCrateHazardBounds(o, synchronizedNow());
       overlaps = avatarOverlapsBounds(motion.x, GROUND_Y + motion.y, hazardBox);
+    } else if (o.type === 'icicle') {
+      overlaps = avatarOverlapsBounds(motion.x, GROUND_Y + motion.y, getIcicleTriggerBounds(o));
     } else {
       overlaps = avatarOverlapsObstacle(motion.x, GROUND_Y + motion.y, o);
     }
@@ -886,19 +936,14 @@ function physicsStep(dt, now) {
       jumpLaunchedByW = false;
       motion.coyoteUntil = 0;
       socket.emit('hitHazard', { id: o.id });
-    } else if (['spikecrate', 'barrel'].includes(o.type)) {
+    } else if (['spikecrate', 'icicle'].includes(o.type)) {
       motion.moving = false;
-      motion.pauseUntil = now + 180;
+      motion.pauseUntil = now + 120;
       jumpQueuedUntil = 0;
       socket.emit('hitHazard', { id: o.id }, result => {
         if (!result?.ok) {
           lastHitAt[o.id] = performance.now() - 760;
-          motion.pauseUntil = performance.now() + 100;
-        } else if (result.action === 'knockback') {
-          motion.x = Number.isFinite(result.x) ? result.x : motion.x;
-          motion.y = Number.isFinite(result.y) ? result.y : motion.y;
-          motion.moving = false; motion.grounded = false; motion.jumping = true;
-          motion.vy = -150; motion.pauseUntil = performance.now() + 360;
+          motion.pauseUntil = performance.now() + 80;
         }
       });
       return;
@@ -1007,7 +1052,7 @@ function drawWorld(now) {
           ctx.fillStyle = '#fff'; ctx.font = 'bold 11px Nunito'; ctx.textAlign='center'; ctx.fillText(blocked ? 'IDE NEM TEHETŐ' : 'ÚJ HELY · 12 ARANY', Math.max(74, Math.min(w-74, px)), Math.max(67, ground-57));
         }
       }
-    } else if (['crate','stairs','spikecrate','spring','barrel'].includes(selectedBuildType)) {
+    } else if (['crate','stairs','ladder','spikecrate','spring','barrel','fan','icicle'].includes(selectedBuildType)) {
       const placementError = getBuildPlacementError(selectedBuildType, px, ground);
       const blocked = !!placementError;
       ctx.globalAlpha = 0.72;
@@ -1135,35 +1180,60 @@ function drawObstacle(ctx, o, now) {
     }
     ctx.strokeStyle='#f7d59a'; ctx.lineWidth=2; ctx.beginPath();ctx.moveTo(x-34,ground-13);ctx.lineTo(x+34,ground-37);ctx.stroke();
   } else if (o.type === 'spikecrate') {
-    // A wooden box with one side that thrusts spikes out, retracts, then switches sides.
-    const state = getSpikeCrateState(o, now + serverClockOffset);
-    const progress = state.extended ? Math.min(1, Math.max(.12, Math.min(state.phase < 170 ? state.phase/170 : 1, state.phase > 850 ? (1000-state.phase)/150 : 1))) : 0;
-    ctx.fillStyle='#5f3b28'; ctx.fillRect(x-25,ground-43,50,43);
-    ctx.fillStyle='#b77a42'; ctx.fillRect(x-22,ground-40,44,37);
-    ctx.fillStyle='#dfa45d'; ctx.fillRect(x-21,ground-39,42,6);
-    ctx.strokeStyle='#704326'; ctx.lineWidth=3; ctx.strokeRect(x-20,ground-33,40,29);
-    ctx.beginPath();ctx.moveTo(x-17,ground-31);ctx.lineTo(x+17,ground-5);ctx.moveTo(x+17,ground-31);ctx.lineTo(x-17,ground-5);ctx.stroke();
-    ctx.fillStyle='#3a2a24'; ctx.fillRect(x-4,ground-24,8,9); ctx.fillStyle='#f1ca7d'; ctx.fillRect(x-2,ground-21,4,5);
-    const side = state.side === 'left' ? -1 : 1;
-    const rootX = x + side*22;
-    // Metal launch rails and three points; extension length follows an animated ramp.
-    ctx.strokeStyle='#64748b'; ctx.lineWidth=3;
-    for (let i=0;i<3;i++) {
-      const yy=ground-29+i*9;
-      ctx.beginPath();ctx.moveTo(rootX,yy);ctx.lineTo(rootX+side*(3+22*progress),yy);ctx.stroke();
-      ctx.fillStyle='#dbe5f0';ctx.beginPath();ctx.moveTo(rootX+side*(3+22*progress),yy-4);ctx.lineTo(rootX+side*(12+22*progress),yy);ctx.lineTo(rootX+side*(3+22*progress),yy+4);ctx.closePath();ctx.fill();
+    // Animated wooden hazard, cycling through left, right and top spikes.
+    const state = getSpikeCrateState(o, synchronizedNow());
+    const progress = state.progress || 0;
+    ctx.fillStyle='#513522';ctx.fillRect(x-26,ground-44,52,44);
+    ctx.fillStyle='#b9793d';ctx.fillRect(x-22,ground-40,44,36);
+    ctx.fillStyle='#e8b36c';ctx.fillRect(x-21,ground-40,42,6);
+    ctx.strokeStyle='#704326';ctx.lineWidth=3;ctx.strokeRect(x-20,ground-33,40,28);
+    ctx.strokeStyle='#6f4328';ctx.lineWidth=4;ctx.beginPath();ctx.moveTo(x-16,ground-31);ctx.lineTo(x+16,ground-7);ctx.moveTo(x+16,ground-31);ctx.lineTo(x-16,ground-7);ctx.stroke();
+    ctx.fillStyle='#38271e';ctx.fillRect(x-5,ground-24,10,9);ctx.fillStyle='#ffd078';ctx.fillRect(x-2,ground-21,4,4);
+    const ext=progress*27; ctx.lineCap='round';ctx.lineWidth=4;ctx.strokeStyle='#71859a';
+    if(state.side==='left'||state.side==='right'){
+      const dir=state.side==='left'?-1:1;
+      for(let i=0;i<3;i++){
+        const yy=ground-31+i*11, root=x+dir*21, tip=root+dir*(2+ext);
+        ctx.beginPath();ctx.moveTo(root,yy);ctx.lineTo(tip,yy);ctx.stroke();
+        if(progress>0.16){ctx.fillStyle='#e4edf5';ctx.strokeStyle='#8193a6';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(tip,yy-5*progress);ctx.lineTo(tip+dir*11*progress,yy);ctx.lineTo(tip,yy+5*progress);ctx.closePath();ctx.fill();ctx.stroke();}
+      }
+    } else {
+      for(let i=0;i<3;i++){
+        const xx=x-15+i*15, rootY=ground-43, tipY=rootY-ext;
+        ctx.beginPath();ctx.moveTo(xx,rootY);ctx.lineTo(xx,tipY);ctx.stroke();
+        if(progress>0.16){ctx.fillStyle='#e4edf5';ctx.strokeStyle='#8193a6';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(xx-5*progress,tipY);ctx.lineTo(xx,tipY-11*progress);ctx.lineTo(xx+5*progress,tipY);ctx.closePath();ctx.fill();ctx.stroke();}
+      }
     }
-    ctx.fillStyle=state.extended?'#ff7d5f':'#9eb0c3';ctx.font='900 8px Nunito';ctx.textAlign='center';ctx.fillText(state.extended?'VESZÉLY':'VÁR',x,ground-48);
+    ctx.fillStyle=state.extended?'#ff6e5f':'#8ea4b8';ctx.font='900 8px Nunito';ctx.textAlign='center';ctx.fillText(state.extended?'VESZÉLY':'VÁR',x,ground-50);
   } else if (o.type === 'spring') {
     ctx.fillStyle='#23864f';ctx.fillRect(x-25,ground-9,50,9);ctx.strokeStyle='#f2f6ff';ctx.lineWidth=4;ctx.beginPath();ctx.moveTo(x,ground-8);for(let i=0;i<4;i++)ctx.lineTo(x+(i%2===0?13:-13),ground-11-i*7);ctx.stroke();ctx.fillStyle='#ff5d69';ctx.fillRect(x-22,ground-38,44,8);ctx.fillStyle='#ffb7b8';ctx.fillRect(x-17,ground-36,34,3);ctx.strokeStyle='#fff0f1';ctx.lineWidth=2;ctx.strokeRect(x-22,ground-38,44,8);
   } else if (o.type === 'barrel') {
-    // An upright oak barrel: tapered body, curved staves, iron hoops and a visible lid.
-    ctx.save();ctx.translate(x,ground-2);
-    ctx.fillStyle='#633a24';ctx.beginPath();ctx.moveTo(-17,-35);ctx.quadraticCurveTo(-25,-19,-19,-4);ctx.lineTo(19,-4);ctx.quadraticCurveTo(25,-19,17,-35);ctx.closePath();ctx.fill();
-    ctx.fillStyle='#a96530';ctx.beginPath();ctx.moveTo(-14,-33);ctx.quadraticCurveTo(-20,-18,-15,-6);ctx.lineTo(15,-6);ctx.quadraticCurveTo(20,-18,14,-33);ctx.closePath();ctx.fill();
-    ctx.strokeStyle='#633b27';ctx.lineWidth=2;for(const sx of [-9,-3,3,9]){ctx.beginPath();ctx.moveTo(sx,-32);ctx.quadraticCurveTo(sx+(sx<0?-2:2),-18,sx,-7);ctx.stroke();}
-    ctx.strokeStyle='#8b98a9';ctx.lineWidth=4;ctx.beginPath();ctx.ellipse(0,-28,16,4,0,0,Math.PI*2);ctx.stroke();ctx.beginPath();ctx.ellipse(0,-9,18,4,0,0,Math.PI*2);ctx.stroke();
-    ctx.fillStyle='#c58a4d';ctx.beginPath();ctx.ellipse(0,-35,15,4.5,0,0,Math.PI*2);ctx.fill();ctx.strokeStyle='#6b4228';ctx.lineWidth=2;ctx.stroke();ctx.beginPath();ctx.ellipse(0,-35,10,2.5,0,0,Math.PI*2);ctx.stroke();ctx.restore();
+    // Solid decorative barrel: no knockback and its top is a stable landing surface.
+    ctx.save();ctx.translate(x,ground-1);
+    ctx.fillStyle='#4e2d1c';ctx.beginPath();ctx.moveTo(-18,-36);ctx.quadraticCurveTo(-26,-20,-21,-3);ctx.lineTo(21,-3);ctx.quadraticCurveTo(26,-20,18,-36);ctx.closePath();ctx.fill();
+    ctx.fillStyle='#a96832';ctx.beginPath();ctx.moveTo(-15,-34);ctx.quadraticCurveTo(-21,-20,-17,-6);ctx.lineTo(17,-6);ctx.quadraticCurveTo(21,-20,15,-34);ctx.closePath();ctx.fill();
+    for(const sx of [-10,-4,3,10]){ctx.strokeStyle='#704027';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(sx,-33);ctx.quadraticCurveTo(sx+(sx<0?-2:2),-20,sx,-7);ctx.stroke();}
+    ctx.strokeStyle='#6b7b8d';ctx.lineWidth=4;ctx.beginPath();ctx.ellipse(0,-30,18,4.5,0,0,Math.PI*2);ctx.stroke();ctx.beginPath();ctx.ellipse(0,-8,20,4.5,0,0,Math.PI*2);ctx.stroke();
+    ctx.fillStyle='#d39a5f';ctx.beginPath();ctx.ellipse(0,-36,16,5,0,0,Math.PI*2);ctx.fill();ctx.strokeStyle='#5a3824';ctx.lineWidth=2;ctx.stroke();
+    ctx.strokeStyle='#6f482a';ctx.lineWidth=1;for(let i=-9;i<=9;i+=6){ctx.beginPath();ctx.moveTo(i,-38);ctx.lineTo(i,-34);ctx.stroke();}ctx.restore();
+  } else if (o.type === 'ladder') {
+    const top=ground-120;ctx.save();ctx.lineCap='round';ctx.strokeStyle='#6b4228';ctx.lineWidth=8;ctx.beginPath();ctx.moveTo(x-13,top);ctx.lineTo(x-13,ground);ctx.moveTo(x+13,top);ctx.lineTo(x+13,ground);ctx.stroke();
+    ctx.strokeStyle='#d59a56';ctx.lineWidth=4;ctx.beginPath();ctx.moveTo(x-13,top);ctx.lineTo(x-13,ground);ctx.moveTo(x+13,top);ctx.lineTo(x+13,ground);ctx.stroke();
+    for(let yy=top+8;yy<ground-2;yy+=14){ctx.strokeStyle='#7a4c2d';ctx.lineWidth=6;ctx.beginPath();ctx.moveTo(x-14,yy);ctx.lineTo(x+14,yy);ctx.stroke();ctx.strokeStyle='#e9bd7c';ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(x-12,yy);ctx.lineTo(x+12,yy);ctx.stroke();}ctx.restore();
+  } else if (o.type === 'fan') {
+    // Rotating blades plus moving pale-blue air ribbons to show the direction of the wind.
+    const cx=x,cy=ground-24,angle=now/42;ctx.save();
+    for(let i=0;i<6;i++){const sx=x+29+((now*.14+i*24)%125),yy=ground-43+(i%5)*8;ctx.globalAlpha=.22+.45*Math.abs(Math.sin(now/190+i));ctx.strokeStyle='#b9f4ff';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(sx,yy);ctx.quadraticCurveTo(sx+7,yy-3,sx+14,yy);ctx.lineTo(sx+23,yy);ctx.stroke();}
+    ctx.globalAlpha=1;ctx.fillStyle='#263b52';ctx.beginPath();ctx.roundRect(x-23,ground-13,46,12,4);ctx.fill();ctx.fillStyle='#839bad';ctx.fillRect(x-18,ground-18,36,6);
+    ctx.fillStyle='#324c64';ctx.beginPath();ctx.arc(cx,cy,22,0,Math.PI*2);ctx.fill();ctx.strokeStyle='#c7d6e5';ctx.lineWidth=3;ctx.stroke();ctx.save();ctx.translate(cx,cy);ctx.rotate(angle);
+    for(let i=0;i<4;i++){ctx.rotate(Math.PI/2);ctx.fillStyle='#86d8e9';ctx.beginPath();ctx.ellipse(0,-11,6.5,11,-.18,0,Math.PI*2);ctx.fill();ctx.strokeStyle='#d6fbff';ctx.lineWidth=1;ctx.stroke();}ctx.restore();ctx.fillStyle='#e5f7ff';ctx.beginPath();ctx.arc(cx,cy,5,0,Math.PI*2);ctx.fill();ctx.strokeStyle='#47657e';ctx.lineWidth=1.5;ctx.stroke();ctx.restore();
+  } else if (o.type === 'icicle') {
+    // Suspended icicle drops down after its trigger is activated.
+    const started=Number(o.dropStartedAt)||0, elapsed=started?synchronizedNow()-started:999999;
+    const dropping=elapsed>=0&&elapsed<760, fall=dropping?Math.min(1,elapsed/760):0, top=ground-100+fall*112;ctx.save();
+    if(!dropping){ctx.strokeStyle='#d8f7ff';ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(x,ground-115);ctx.lineTo(x,ground-100);ctx.stroke();}
+    ctx.fillStyle='#a4edff';ctx.strokeStyle='#ecfcff';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(x-11,top);ctx.lineTo(x+10,top);ctx.lineTo(x+3,top+30);ctx.lineTo(x,top+42);ctx.lineTo(x-5,top+25);ctx.closePath();ctx.fill();ctx.stroke();ctx.fillStyle='#fff';ctx.globalAlpha=.8;ctx.beginPath();ctx.moveTo(x-5,top+4);ctx.lineTo(x-1,top+23);ctx.lineTo(x-3,top+25);ctx.closePath();ctx.fill();ctx.globalAlpha=1;
+    if(dropping){ctx.globalAlpha=.24;ctx.fillStyle='#9ce8ff';ctx.beginPath();ctx.ellipse(x,top+17,24,33,0,0,Math.PI*2);ctx.fill();ctx.globalAlpha=1;}ctx.restore();
   }
   ctx.fillStyle='#14263d55';ctx.beginPath();ctx.ellipse(x,ground+2,o.type==='stairs'?28:22,4,0,0,Math.PI*2);ctx.fill();
 }

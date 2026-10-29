@@ -98,9 +98,12 @@ const ANIMALS = new Set(['pig', 'capybara', 'horse', 'penguin', 'raccoon']);
 const ITEMS = {
   crate: { name: 'Fa láda', cost: 10 },
   stairs: { name: 'Fa lépcső', cost: 18 },
+  ladder: { name: 'Fa létra', cost: 22 },
   spikecrate: { name: 'Váltakozó tüskés láda', cost: 28 },
   spring: { name: 'Rugós kilövő', cost: 30 },
-  barrel: { name: 'Guruló hordó', cost: 25 },
+  barrel: { name: 'Díszes fahordó', cost: 25 },
+  fan: { name: 'Szélfújó ventilátor', cost: 32 },
+  icicle: { name: 'Leeső jégcsap', cost: 30 },
   shield: { name: 'Pajzs', cost: 20 },
   lifebuoy: { name: 'Mentőöv', cost: 30 },
   jumpboots: { name: 'Ugrócsizma', cost: 35 }
@@ -124,24 +127,40 @@ function clamp(n, min, max) { return Math.max(min, Math.min(max, n)); }
 function obstacleBounds(type, x, groundY) {
   if (type === 'crate' || type === 'spikecrate') return { left: x - 25, right: x + 25, top: groundY - 43, bottom: groundY };
   if (type === 'stairs') return { left: x - 34, right: x + 34, top: groundY - 42, bottom: groundY };
+  if (type === 'ladder') return { left: x - 17, right: x + 17, top: groundY - 122, bottom: groundY + 2 };
   if (type === 'spring') return { left: x - 26, right: x + 26, top: groundY - 40, bottom: groundY + 4 };
-  if (type === 'barrel') return { left: x - 22, right: x + 22, top: groundY - 36, bottom: groundY + 3 };
+  if (type === 'barrel') return { left: x - 23, right: x + 23, top: groundY - 37, bottom: groundY + 3 };
+  if (type === 'fan') return { left: x - 24, right: x + 24, top: groundY - 42, bottom: groundY + 4 };
+  if (type === 'icicle') return { left: x - 20, right: x + 20, top: groundY - 90, bottom: groundY + 3 };
   return { left: x - 20, right: x + 20, top: groundY - 30, bottom: groundY + 3 };
 }
 function spikeCrateState(obstacle, time = Date.now()) {
-  const phase = ((time + (Number(obstacle.spikeOffset) || 0)) % 3000 + 3000) % 3000;
-  if (phase < 1000) return { side: 'left', extended: true, phase };
-  if (phase < 1500) return { side: 'left', extended: false, phase };
-  if (phase < 2500) return { side: 'right', extended: true, phase };
-  return { side: 'right', extended: false, phase };
+  // Three reliable directions: left, right, then upward. Each cycle has a short
+  // extend/retract animation and a matching active collision window.
+  const period = 3600;
+  const phase = ((time + (Number(obstacle.spikeOffset) || 0)) % period + period) % period;
+  const slot = Math.floor(phase / 1200);
+  const localPhase = phase - slot * 1200;
+  let progress = 0;
+  if (localPhase < 180) progress = localPhase / 180;
+  else if (localPhase < 720) progress = 1;
+  else if (localPhase < 900) progress = (900 - localPhase) / 180;
+  const side = ['left', 'right', 'top'][Math.min(2, slot)];
+  return { side, progress: Math.max(0, Math.min(1, progress)), extended: progress >= 0.72, phase: localPhase };
 }
 function spikeCrateHazardBounds(obstacle, time = Date.now()) {
   const state = spikeCrateState(obstacle, time);
   if (!state.extended) return null;
   const x = Number(obstacle.x) || 0, groundY = Number.isFinite(obstacle.groundY) ? obstacle.groundY : GROUND_Y;
-  return state.side === 'left'
-    ? { left: x - 43, right: x - 23, top: groundY - 29, bottom: groundY - 2 }
-    : { left: x + 23, right: x + 43, top: groundY - 29, bottom: groundY - 2 };
+  if (state.side === 'left') return { left: x - 62, right: x - 19, top: groundY - 51, bottom: groundY - 3 };
+  if (state.side === 'right') return { left: x + 19, right: x + 62, top: groundY - 51, bottom: groundY - 3 };
+  // Match the visibly extended top spikes, including their pointed tips.
+  return { left: x - 24, right: x + 24, top: groundY - 84, bottom: groundY - 36 };
+}
+function icicleTriggerBounds(obstacle) {
+  const x = Number(obstacle.x) || 0, groundY = Number.isFinite(obstacle.groundY) ? obstacle.groundY : GROUND_Y;
+  // Trigger zone below the hanging icicle; impact is evaluated after its fall animation.
+  return { left: x - 24, right: x + 24, top: groundY - 112, bottom: groundY + 8 };
 }
 function overlapsRect(a, b, gap = 0) {
   return a.left < b.right + gap && a.right > b.left - gap && a.top < b.bottom + gap && a.bottom > b.top - gap;
@@ -163,7 +182,7 @@ function publicRoom(room) {
   return {
     code: room.code, hostId: room.hostId, settings: { ...room.settings }, platforms: platformsForRoom(room).map(p => ({ ...p })),
     phase: room.phase, roundNo: room.roundNo, players: room.players.map(publicPlayer),
-    obstacles: room.obstacles.map(o => ({ ...o })), chat: room.chat.slice(-40),
+    obstacles: room.obstacles.map(o => { const copy = { ...o }; delete copy.dropTargetId; return copy; }), chat: room.chat.slice(-40),
     roundDeadline: room.roundDeadline, raceStartsAt: room.raceStartsAt, currentBuilderId: room.currentBuilderId,
     buildQueue: room.buildQueue.slice(), buildTurnEndsAt: room.buildTurnEndsAt,
     lastResults: room.lastResults.map(r => ({ ...r })), winnerId: room.winnerId,
@@ -491,34 +510,71 @@ io.on('connection', socket => {
     if (!room || room.phase !== 'race' || (room.raceStartsAt && Date.now() < room.raceStartsAt)) return ack({ ok: false, error: 'Most még nem aktív a verseny.' });
     const p = getPlayer(room, socket.id);
     if (!p || p.finished) return ack({ ok: false, error: 'Ez a játékos már nem versenyez.' });
-    if (Date.now() < p.hitCooldownUntil) return ack({ ok: false, error: 'A csapda még nem aktiválható újra.' });
+    const now = Date.now();
+    if (now < p.hitCooldownUntil) return ack({ ok: false, error: 'A csapda még nem aktiválható újra.' });
     const obstacle = room.obstacles.find(o => o.id === payload.id);
-    if (!obstacle || ['crate', 'stairs'].includes(obstacle.type) || Math.abs(p.x - obstacle.x) > 90) return ack({ ok: false, error: 'A csapdaérintés nem érvényes.' });
+    if (!obstacle || ['crate', 'stairs', 'ladder', 'barrel', 'fan'].includes(obstacle.type) || Math.abs(p.x - obstacle.x) > 100) return ack({ ok: false, error: 'Ez nem aktiválható csapda, vagy nem vagy a közelében.' });
     const obstacleGround = Number.isFinite(obstacle.groundY) ? obstacle.groundY : GROUND_Y;
     const playerFeet = GROUND_Y + p.y;
     const playerTop = playerFeet - 42;
     let b = null;
-    if (obstacle.type === 'spikecrate') b = spikeCrateHazardBounds(obstacle, Date.now());
+    if (obstacle.type === 'spikecrate') b = spikeCrateHazardBounds(obstacle, now);
     else if (obstacle.type === 'spring') b = { left: obstacle.x - 26, right: obstacle.x + 26, top: obstacleGround - 40, bottom: obstacleGround + 4 };
-    else if (obstacle.type === 'barrel') b = { left: obstacle.x - 22, right: obstacle.x + 22, top: obstacleGround - 36, bottom: obstacleGround + 3 };
+    else if (obstacle.type === 'icicle') b = icicleTriggerBounds(obstacle);
     else b = null;
-    if (!b || p.x + 13 < b.left - 16 || p.x - 13 > b.right + 16 || playerFeet + 2 < b.top - 24 || playerTop > b.bottom + 24) {
-      return ack({ ok: false, error: 'A csapda még nincs aktív oldalon / a karakter nincs a közelében.' });
+    const playerRect = { left: p.x - 13, right: p.x + 13, top: playerTop, bottom: playerFeet + 3 };
+    if (!b || !overlapsRect(playerRect, b, 5)) return ack({ ok: false, error: 'A csapda még nincs aktív helyzetben, vagy nem értél hozzá.' });
+
+    if (obstacle.type === 'icicle') {
+      if (Number(obstacle.cooldownUntil) > now || obstacle.dropTargetId) return ack({ ok: false, error: 'A jégcsapnak még vissza kell húzódnia.' });
+      // Trigger now, show the fall animation, then apply the hit only if the
+      // player is still under it when it reaches the player-height zone.
+      obstacle.dropStartedAt = now;
+      obstacle.cooldownUntil = now + 1800;
+      obstacle.dropTargetId = p.id;
+      pushChat(room, 'RENDSZER', `❄️ A jégcsap lezuhan ${p.name} fölött!`, true);
+      emitRoom(room);
+      ack({ ok: true, action: 'icicleStarted' });
+      const roomCode = room.code, obstacleId = obstacle.id, playerId = p.id;
+      setTimeout(() => {
+        if (rooms.get(roomCode) !== room) return;
+        const currentObstacle = room.obstacles.find(o => o.id === obstacleId);
+        if (!currentObstacle || currentObstacle.dropTargetId !== playerId) return;
+        currentObstacle.dropTargetId = null;
+        if (room.phase !== 'race') { emitRoom(room); return; }
+        const target = room.players.find(player => player.id === playerId);
+        if (!target || target.finished) { emitRoom(room); return; }
+        const currentNow = Date.now();
+        const currentGround = Number.isFinite(currentObstacle.groundY) ? currentObstacle.groundY : GROUND_Y;
+        const targetFeet = GROUND_Y + target.y;
+        const targetRect = { left: target.x - 13, right: target.x + 13, top: targetFeet - 42, bottom: targetFeet + 3 };
+        const impactBounds = { left: currentObstacle.x - 23, right: currentObstacle.x + 23, top: currentGround - 58, bottom: currentGround + 10 };
+        if (!overlapsRect(targetRect, impactBounds, 2) || currentNow < target.hitCooldownUntil) {
+          pushChat(room, 'RENDSZER', `❄️ ${target.name} kitért a leeső jégcsap elől!`, true);
+          emitRoom(room);
+          return;
+        }
+        target.hitCooldownUntil = currentNow + 900;
+        if (target.shields > 0) {
+          target.shields -= 1;
+          target.x = clamp(target.x - 62, target.startX ?? 36, room.settings.mapLength - 40);
+          target.moving = false; target.jumping = true;
+          pushChat(room, 'RENDSZER', `🛡️ ${target.name} pajzsa kivédte a leeső jégcsapot!`, true);
+        } else {
+          target.deaths += 1; target.x = target.startX ?? 36; target.y = 0; target.moving = false; target.jumping = false;
+          pushChat(room, 'RENDSZER', `🧊 ${target.name} eltalálta a leeső jégcsap, vissza a rajthoz!`, true);
+        }
+        emitPositions(room); emitRoom(room);
+      }, 520);
+      return;
     }
-    p.hitCooldownUntil = Date.now() + 900;
+
+    p.hitCooldownUntil = now + 900;
     let action = 'death';
     if (obstacle.type === 'spring') {
       action = 'spring';
       p.jumping = true;
       pushChat(room, 'RENDSZER', `${p.name} felrepült a rugós kilövővel!`, true);
-    } else if (obstacle.type === 'barrel') {
-      // A barrel is a bump/knockback obstacle, never a lethal trap.
-      p.knockbackCount = (p.knockbackCount || 0) + 1;
-      p.x = clamp(p.x + (p.x <= obstacle.x ? -82 : 82), p.startX ?? 36, room.settings.mapLength - 40);
-      p.y = Math.min(p.y, -14);
-      p.moving = false; p.jumping = true;
-      action = 'knockback';
-      pushChat(room, 'RENDSZER', `🛢️ ${p.name} nekiment a hordónak, amely visszalökte! Egy pillanatra megtorpant.`, true);
     } else if (p.shields > 0) {
       p.shields -= 1;
       p.x = clamp(p.x - 62, p.startX ?? 36, room.settings.mapLength - 40);
@@ -665,7 +721,7 @@ function leaveRoom(socket) {
 
 server.listen(PORT, '0.0.0.0', () => {
   console.log('==========================================');
-  console.log('  ALLATKAOSZ 1.13 - online 2D versenyjatek');
+  console.log('  ALLATKAOSZ 1.15.1 - online 2D versenyjatek');
   console.log(`  Helyben: http://localhost:${PORT}`);
   console.log('  Helyi halozaton: http://A_SZERVER_GEP_IP_CIME:' + PORT);
   console.log('  Leallitas: CTRL+C');

@@ -1,12 +1,12 @@
 @echo off
 chcp 65001 >nul
-title ALLATKAOSZ 1.14 - Online 2D jatek
+title ALLATKAOSZ 1.15.1 - Online 2D jatek
 cd /d "%~dp0"
 color 0B
 
 echo.
 echo  ==============================================
-echo           ALLATKAOSZ 1.13 - INDÍTÁS
+echo           ALLATKAOSZ 1.15.1 - INDÍTÁS
 echo  ==============================================
 echo.
 
